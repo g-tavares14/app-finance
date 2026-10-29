@@ -3,6 +3,7 @@ package handlers
 import (
 	"app-finance/internal/usecases"
 	"fmt"
+	"log/slog"
 	"net/http"
 )
 
@@ -17,5 +18,8 @@ func NewHandlers(usecases *usecases.UseCase) *Handlers {
 }
 
 func (h *Handlers) Listen(port int) error {
+	h.registerUserEndpoints()
+
+	slog.Info("Server is running", "port", port)
 	return http.ListenAndServe(fmt.Sprintf(":%d", port), nil)
 }
