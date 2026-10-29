@@ -12,6 +12,8 @@ type UseCase struct {
 	repos *repositories.Repository
 }
 
+var ErrEmailAlreadyExists = errors.New("email already exists")
+
 func New(repos *repositories.Repository) *UseCase {
 	return &UseCase{
 		repos: repos,
@@ -25,10 +27,6 @@ func (u *UseCase) GetAll() ([]models.User, error) {
 		return nil, err
 	}
 
-	if len(users) == 0 {
-		return nil, nil
-	}
-
 	return users, nil
 }
 
@@ -36,7 +34,7 @@ func (u *UseCase) Add(user models.User) (uuid.UUID, error) {
 	userExist := u.repos.User.EmailExists(user.Email)
 
 	if userExist {
-		return uuid.Nil, errors.New("email already exists")
+		return uuid.Nil, ErrEmailAlreadyExists
 	}
 
 	repoReq := models.User{
