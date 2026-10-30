@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib" // registra o driver "pgx" no database/sql
@@ -13,7 +14,7 @@ import (
 func Open(ctx context.Context, dsn string) (*sql.DB, error) {
 	conn, err := sql.Open("pgx", dsn)
 	if err != nil {
-		return nil, fmt.Errorf("abrindo conexão: %w", err)
+		return nil, fmt.Errorf("opening connection: %w", err)
 	}
 
 	conn.SetMaxOpenConns(10)
@@ -25,8 +26,10 @@ func Open(ctx context.Context, dsn string) (*sql.DB, error) {
 
 	if err := conn.PingContext(pingCtx); err != nil {
 		conn.Close()
-		return nil, fmt.Errorf("ping no banco: %w", err)
+		return nil, fmt.Errorf("pinging database: %w", err)
 	}
+
+	slog.Info("database connection established")
 
 	return conn, nil
 }

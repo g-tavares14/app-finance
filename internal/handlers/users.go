@@ -17,6 +17,7 @@ func (h *Handlers) registerUserEndpoints() {
 func (h *Handlers) getAll(w http.ResponseWriter, r *http.Request) {
 	users, err := h.usecases.GetAll()
 	if err != nil {
+		slog.Error("failed to get users", "error", err)
 		http.Error(w, "failed to get users", http.StatusInternalServerError)
 		return
 	}
@@ -46,9 +47,12 @@ func (h *Handlers) addUser(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusConflict)
 			return
 		}
+		slog.Error("failed to create user", "error", err)
 		http.Error(w, "failed to create user", http.StatusInternalServerError)
 		return
 	}
+
+	slog.Info("user created", "user_id", id)
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)

@@ -31,7 +31,10 @@ func (u *UseCase) GetAll() ([]models.User, error) {
 }
 
 func (u *UseCase) Add(user models.User) (uuid.UUID, error) {
-	userExist := u.repos.User.EmailExists(user.Email)
+	userExist, err := u.repos.User.EmailExists(user.Email)
+	if err != nil {
+		return uuid.Nil, err
+	}
 
 	if userExist {
 		return uuid.Nil, ErrEmailAlreadyExists
