@@ -71,7 +71,7 @@ func (h *Handlers) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, err := h.usecases.Login(request.Email, request.Password)
+	token, err := h.usecases.Login(request.Email, request.Password)
 	if err != nil {
 		if errors.Is(err, usecases.ErrInvalidCredentials) {
 			http.Error(w, err.Error(), http.StatusUnauthorized)
@@ -82,10 +82,8 @@ func (h *Handlers) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	slog.Info("user logged in", "user_id", id)
-
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(models.LoginResponse{UserID: id}); err != nil {
+	if err := json.NewEncoder(w).Encode(models.LoginResponse{Token: token}); err != nil {
 		slog.Error("failed to encode login response", "error", err)
 	}
 }

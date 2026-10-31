@@ -6,13 +6,16 @@ import (
 	userrepo "app-finance/internal/repositories/users"
 	"errors"
 	"fmt"
+	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
 
 type UseCase struct {
-	repos *repositories.Repository
+	repos     *repositories.Repository
+	jwtSecret []byte
 }
 
 var ErrEmailAlreadyExists = errors.New("email already exists")
@@ -21,9 +24,10 @@ var ErrEmailAlreadyExists = errors.New("email already exists")
 // para a resposta não revelar quais e-mails estão cadastrados.
 var ErrInvalidCredentials = errors.New("invalid credentials")
 
-func New(repos *repositories.Repository) *UseCase {
+func New(repos *repositories.Repository, jwtSecret []byte) *UseCase {
 	return &UseCase{
-		repos: repos,
+		repos:     repos,
+		jwtSecret: jwtSecret,
 	}
 }
 
@@ -67,23 +71,33 @@ func (u *UseCase) Add(user models.User) (uuid.UUID, error) {
 	return repoReq.ID, nil
 }
 
-func (u *UseCase) Login(email, password string) (uuid.UUID, error) {
+func (u *UseCase) Login(email, password string) (string, error) {
 	user, err := u.repos.User.GetByEmail(email)
 	if errors.Is(err, userrepo.ErrNotFound) {
-		return uuid.Nil, ErrInvalidCredentials
+		return "", ErrInvalidCredentials
 	}
 	if err != nil {
-		return uuid.Nil, err
+		return "", err
 	}
 
 	// user.Password guarda o hash bcrypt vindo do banco
 	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
 	if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
-		return uuid.Nil, ErrInvalidCredentials
+		return "", ErrInvalidCredentials
 	}
 	if err != nil {
-		return uuid.Nil, fmt.Errorf("comparing password: %w", err)
+		return "", fmt.Errorf("comparing password: %w", err)
 	}
 
-	return user.ID, nil
+	// o token só é gerado depois que e-mail e senha foram confirmados
+	claims := jwt.RegisteredClaims{
+		Subject:   user.ID.String(), // o ID do usuário vai aqui
+		ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
+	}
+	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(u.jwtSecret)
+	if err != nil {
+		return "", fmt.Errorf("signing token: %w", err)
+	}
+
+	return token, nil
 }

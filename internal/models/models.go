@@ -26,7 +26,7 @@ type Login struct {
 	Password string `json:"password"`
 }
 
-// LoginResponse devolve só o ID por enquanto; o token entra quando houver JWT.
+// LoginResponse devolve o JWT; o ID do usuário vai dentro dele.
 type LoginResponse struct {
-	UserID uuid.UUID `json:"user_id"`
+	Token string `json:"token"`
 }

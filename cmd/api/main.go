@@ -13,6 +13,12 @@ import (
 
 func main() {
 
+	secret := os.Getenv("JWT_SECRET")
+	if secret == "" {
+		slog.Error("JWT_SECRET environment variable is not set")
+		os.Exit(1)
+	}
+
 	dsn := os.Getenv("DATABASE_URL")
 	if dsn == "" {
 		dsn = "postgres://finance:finance@localhost:5432/finance?sslmode=disable"
@@ -26,7 +32,7 @@ func main() {
 	defer conn.Close()
 
 	repos := repositories.New(conn)
-	useCase := usecases.New(repos)
+	useCase := usecases.New(repos, []byte(secret))
 
 	h := handlers.NewHandlers(useCase)
 	err = h.Listen(8080)
