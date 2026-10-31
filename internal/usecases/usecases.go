@@ -4,8 +4,10 @@ import (
 	"app-finance/internal/models"
 	"app-finance/internal/repositories"
 	"errors"
+	"fmt"
 
 	"github.com/google/uuid"
+	"golang.org/x/crypto/bcrypt"
 )
 
 type UseCase struct {
@@ -40,12 +42,17 @@ func (u *UseCase) Add(user models.User) (uuid.UUID, error) {
 		return uuid.Nil, ErrEmailAlreadyExists
 	}
 
+	hash, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("hashing password: %w", err)
+	}
+
 	repoReq := models.User{
 		ID:        uuid.New(),
 		FirstName: user.FirstName,
 		LastName:  user.LastName,
 		Email:     user.Email,
-		Password:  user.Password,
+		Password:  string(hash),
 	}
 
 	if err := u.repos.User.Add(repoReq); err != nil {
