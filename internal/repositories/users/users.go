@@ -51,7 +51,7 @@ func (u *Users) EmailExists(email string) (bool, error) {
 
 func (u *Users) Add(newUser models.User) error {
 	_, err := u.db.Exec(
-		"INSERT INTO users (id, first_name, last_name, email, password) VALUES ($1, $2, $3, $4, $5)",
+		"INSERT INTO users (id, first_name, last_name, email, password_hash) VALUES ($1, $2, $3, $4, $5)",
 		newUser.ID, newUser.FirstName, newUser.LastName, newUser.Email, newUser.Password,
 	)
 	if err != nil {
