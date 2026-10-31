@@ -12,6 +12,7 @@ type Repository struct {
 		GetAll() ([]models.User, error)
 		Add(newUser models.User) error
 		EmailExists(email string) (bool, error)
+		GetByEmail(email string) (models.User, error)
 	}
 }
 

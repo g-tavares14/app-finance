@@ -3,6 +3,7 @@ package usecases
 import (
 	"app-finance/internal/models"
 	"app-finance/internal/repositories"
+	userrepo "app-finance/internal/repositories/users"
 	"errors"
 	"fmt"
 
@@ -15,6 +16,10 @@ type UseCase struct {
 }
 
 var ErrEmailAlreadyExists = errors.New("email already exists")
+
+// ErrInvalidCredentials cobre e-mail inexistente e senha errada de propósito,
+// para a resposta não revelar quais e-mails estão cadastrados.
+var ErrInvalidCredentials = errors.New("invalid credentials")
 
 func New(repos *repositories.Repository) *UseCase {
 	return &UseCase{
@@ -60,4 +65,25 @@ func (u *UseCase) Add(user models.User) (uuid.UUID, error) {
 	}
 
 	return repoReq.ID, nil
+}
+
+func (u *UseCase) Login(email, password string) (uuid.UUID, error) {
+	user, err := u.repos.User.GetByEmail(email)
+	if errors.Is(err, userrepo.ErrNotFound) {
+		return uuid.Nil, ErrInvalidCredentials
+	}
+	if err != nil {
+		return uuid.Nil, err
+	}
+
+	// user.Password guarda o hash bcrypt vindo do banco
+	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
+	if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
+		return uuid.Nil, ErrInvalidCredentials
+	}
+	if err != nil {
+		return uuid.Nil, fmt.Errorf("comparing password: %w", err)
+	}
+
+	return user.ID, nil
 }

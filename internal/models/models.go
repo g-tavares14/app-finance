@@ -20,3 +20,13 @@ type CreateUser struct {
 type CreateUserResponse struct {
 	NewUserID uuid.UUID `json:"new_user_id"`
 }
+
+type Login struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+// LoginResponse devolve só o ID por enquanto; o token entra quando houver JWT.
+type LoginResponse struct {
+	UserID uuid.UUID `json:"user_id"`
+}

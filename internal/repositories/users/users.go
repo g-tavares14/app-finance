@@ -2,10 +2,14 @@ package users
 
 import (
 	"database/sql"
+	"errors"
 	"fmt"
 
 	"app-finance/internal/models"
 )
+
+// ErrNotFound isola o use case do sql.ErrNoRows, que é detalhe do banco.
+var ErrNotFound = errors.New("user not found")
 
 type Users struct {
 	db *sql.DB
@@ -59,4 +63,21 @@ func (u *Users) Add(newUser models.User) error {
 	}
 
 	return nil
+}
+
+func (u *Users) GetByEmail(email string) (models.User, error) {
+	var user models.User
+	// o hash da senha é lido para o campo Password; o json:"-" impede que vaze nas respostas
+	err := u.db.QueryRow(
+		"SELECT id, first_name, last_name, email, password_hash FROM users WHERE email = $1",
+		email,
+	).Scan(&user.ID, &user.FirstName, &user.LastName, &user.Email, &user.Password)
+	if errors.Is(err, sql.ErrNoRows) {
+		return models.User{}, ErrNotFound
+	}
+	if err != nil {
+		return models.User{}, fmt.Errorf("getting user by email: %w", err)
+	}
+
+	return user, nil
 }
