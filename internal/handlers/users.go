@@ -78,7 +78,7 @@ func (h *Handlers) addUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	id, err := h.usecases.Add(models.User{
+	id, err := h.usecases.Add(r.Context(), models.User{
 		FirstName: request.FirstName,
 		LastName:  request.LastName,
 		Email:     request.Email,
@@ -112,7 +112,7 @@ func (h *Handlers) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := h.usecases.Login(request.Email, request.Password)
+	token, err := h.usecases.Login(r.Context(), request.Email, request.Password)
 	done(errors.Is(err, usecases.ErrInvalidCredentials))
 	if err != nil {
 		writeError(w, err, "failed to login user")
@@ -215,7 +215,7 @@ func (h *Handlers) deleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err := h.usecases.Delete(user, request.Password)
+	err := h.usecases.Delete(r.Context(), user, request.Password)
 	done(errors.Is(err, usecases.ErrInvalidCredentials))
 	if err != nil {
 		writeError(w, err, "failed to delete user")
@@ -249,7 +249,7 @@ func (h *Handlers) updateUser(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	err := h.usecases.Update(user, request)
+	err := h.usecases.Update(r.Context(), user, request)
 	done(errors.Is(err, usecases.ErrInvalidCredentials))
 	if err != nil {
 		writeError(w, err, "failed to update user")

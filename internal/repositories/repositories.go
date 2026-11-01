@@ -1,6 +1,7 @@
 package repositories
 
 import (
+	"context"
 	"database/sql"
 
 	"app-finance/internal/models"
@@ -11,12 +12,12 @@ import (
 
 type Repository struct {
 	User interface {
-		Add(newUser models.User) error
-		EmailExists(email string) (bool, error)
-		GetByEmail(email string) (models.User, error)
-		GetByID(id uuid.UUID) (models.User, error)
-		Delete(id uuid.UUID) error
-		Update(id uuid.UUID, updatedUser models.UpdateUser) error
+		Add(ctx context.Context, newUser models.User) error
+		EmailExists(ctx context.Context, email string) (bool, error)
+		GetByEmail(ctx context.Context, email string) (models.User, error)
+		GetByID(ctx context.Context, id uuid.UUID) (models.User, error)
+		Delete(ctx context.Context, id uuid.UUID) error
+		Update(ctx context.Context, id uuid.UUID, updatedUser models.UpdateUser) error
 	}
 }
 

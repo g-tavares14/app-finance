@@ -4,6 +4,7 @@ import (
 	"app-finance/internal/models"
 	"app-finance/internal/repositories"
 	userrepo "app-finance/internal/repositories/users"
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -50,7 +51,7 @@ func New(repos *repositories.Repository, jwtSecret []byte) *UseCase {
 	}
 }
 
-func (u *UseCase) Add(user models.User) (uuid.UUID, error) {
+func (u *UseCase) Add(ctx context.Context, user models.User) (uuid.UUID, error) {
 	user.Email = NormalizeEmail(user.Email)
 	user.FirstName = strings.TrimSpace(user.FirstName)
 	user.LastName = strings.TrimSpace(user.LastName)
@@ -68,7 +69,7 @@ func (u *UseCase) Add(user models.User) (uuid.UUID, error) {
 		return uuid.Nil, err
 	}
 
-	userExist, err := u.repos.User.EmailExists(user.Email)
+	userExist, err := u.repos.User.EmailExists(ctx, user.Email)
 	if err != nil {
 		return uuid.Nil, err
 	}
@@ -90,7 +91,7 @@ func (u *UseCase) Add(user models.User) (uuid.UUID, error) {
 		Password:  string(hash),
 	}
 
-	err = u.repos.User.Add(repoReq)
+	err = u.repos.User.Add(ctx, repoReq)
 	if errors.Is(err, userrepo.ErrEmailTaken) {
 		return uuid.Nil, ErrEmailAlreadyExists
 	}
@@ -101,8 +102,8 @@ func (u *UseCase) Add(user models.User) (uuid.UUID, error) {
 	return repoReq.ID, nil
 }
 
-func (u *UseCase) Login(email, password string) (string, error) {
-	user, err := u.repos.User.GetByEmail(NormalizeEmail(email))
+func (u *UseCase) Login(ctx context.Context, email, password string) (string, error) {
+	user, err := u.repos.User.GetByEmail(ctx, NormalizeEmail(email))
 	if errors.Is(err, userrepo.ErrNotFound) {
 		_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
 		return "", ErrInvalidCredentials
@@ -130,7 +131,7 @@ func (u *UseCase) Login(email, password string) (string, error) {
 	return token, nil
 }
 
-func (u *UseCase) Authenticate(tokenString string) (models.User, error) {
+func (u *UseCase) Authenticate(ctx context.Context, tokenString string) (models.User, error) {
 	claims := &tokenClaims{}
 	token, err := jwt.ParseWithClaims(
 		tokenString,
@@ -148,7 +149,7 @@ func (u *UseCase) Authenticate(tokenString string) (models.User, error) {
 		return models.User{}, ErrInvalidToken
 	}
 
-	user, err := u.repos.User.GetByID(id)
+	user, err := u.repos.User.GetByID(ctx, id)
 	if errors.Is(err, userrepo.ErrNotFound) {
 		return models.User{}, ErrInvalidToken
 	}
@@ -170,12 +171,12 @@ func (u *UseCase) passwordVersion(passwordHash string) string {
 	return hex.EncodeToString(mac.Sum(nil)[:8])
 }
 
-func (u *UseCase) Delete(user models.User, password string) error {
+func (u *UseCase) Delete(ctx context.Context, user models.User, password string) error {
 	if err := checkPassword(user.Password, password); err != nil {
 		return err
 	}
 
-	err := u.repos.User.Delete(user.ID)
+	err := u.repos.User.Delete(ctx, user.ID)
 	if errors.Is(err, userrepo.ErrNotFound) {
 		return ErrUserNotFound
 	}
@@ -186,7 +187,7 @@ func (u *UseCase) Delete(user models.User, password string) error {
 	return nil
 }
 
-func (u *UseCase) Update(user models.User, update models.UpdateUser) error {
+func (u *UseCase) Update(ctx context.Context, user models.User, update models.UpdateUser) error {
 	nothingToUpdate := update.FirstName == nil && update.LastName == nil && update.Email == nil && update.Password == nil
 	if nothingToUpdate || isBlank(update.FirstName) || isBlank(update.LastName) || isBlank(update.Email) || isBlank(update.Password) {
 		return ErrInvalidUpdate
@@ -241,7 +242,7 @@ func (u *UseCase) Update(user models.User, update models.UpdateUser) error {
 		changes.Password = &hashed
 	}
 
-	err := u.repos.User.Update(user.ID, changes)
+	err := u.repos.User.Update(ctx, user.ID, changes)
 	if errors.Is(err, userrepo.ErrNotFound) {
 		return ErrUserNotFound
 	}

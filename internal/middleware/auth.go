@@ -15,7 +15,7 @@ type contextKey string
 const userKey contextKey = "user"
 
 type Authenticator interface {
-	Authenticate(token string) (models.User, error)
+	Authenticate(ctx context.Context, token string) (models.User, error)
 }
 
 func Auth(a Authenticator, errInvalidToken error) func(http.HandlerFunc) http.HandlerFunc {
@@ -27,7 +27,7 @@ func Auth(a Authenticator, errInvalidToken error) func(http.HandlerFunc) http.Ha
 				return
 			}
 
-			user, err := a.Authenticate(token)
+			user, err := a.Authenticate(r.Context(), token)
 			if errors.Is(err, errInvalidToken) {
 				http.Error(w, "invalid token", http.StatusUnauthorized)
 				return
