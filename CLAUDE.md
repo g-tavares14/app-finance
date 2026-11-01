@@ -29,4 +29,5 @@ Fluxo das camadas: `handlers` → `usecases` → `repositories` → banco.
 
 - Banco local: `docker compose up -d` (Postgres 17 na porta 5432).
 - Build e verificação: `go build ./... && go vet ./...`.
+- Imagem da API: `docker build -t app-finance-api .` (multi-stage, binário estático em imagem `distroless`). Rode na rede do compose com `JWT_SECRET` e `DATABASE_URL` apontando para o host `db`.
 - DSN padrão: `postgres://finance:finance@localhost:5432/finance?sslmode=disable` (sobrescreva com `DATABASE_URL`).
