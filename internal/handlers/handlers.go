@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"app-finance/internal/middleware"
+	"app-finance/internal/ratelimit"
 	"app-finance/internal/usecases"
 	"context"
 	"fmt"
@@ -15,13 +16,20 @@ const (
 	shutdownTimeout   = 10 * time.Second
 )
 
+const (
+	maxLoginFailures   = 5
+	loginFailureWindow = 15 * time.Minute
+)
+
 type Handlers struct {
-	usecases *usecases.UseCase
+	usecases     *usecases.UseCase
+	loginLimiter *ratelimit.Limiter
 }
 
 func NewHandlers(usecases *usecases.UseCase) *Handlers {
 	return &Handlers{
-		usecases: usecases,
+		usecases:     usecases,
+		loginLimiter: ratelimit.New(maxLoginFailures, loginFailureWindow),
 	}
 }
 

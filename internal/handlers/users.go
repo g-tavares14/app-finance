@@ -7,7 +7,10 @@ import (
 	"encoding/json"
 	"errors"
 	"log/slog"
+	"math"
+	"net"
 	"net/http"
+	"strconv"
 )
 
 func (h *Handlers) registerUserEndpoints(mux *http.ServeMux) {
@@ -89,9 +92,21 @@ func (h *Handlers) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	keys := loginKeys(r, request.Email)
+	for _, key := range keys {
+		if wait, blocked := h.loginLimiter.Blocked(key); blocked {
+			w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(wait.Seconds()))))
+			http.Error(w, "too many login attempts", http.StatusTooManyRequests)
+			return
+		}
+	}
+
 	token, err := h.usecases.Login(request.Email, request.Password)
 	if err != nil {
 		if errors.Is(err, usecases.ErrInvalidCredentials) {
+			for _, key := range keys {
+				h.loginLimiter.Fail(key)
+			}
 			http.Error(w, err.Error(), http.StatusUnauthorized)
 			return
 		}
@@ -103,6 +118,18 @@ func (h *Handlers) login(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(models.LoginResponse{Token: token}); err != nil {
 		slog.Error("failed to encode login response", "error", err)
+	}
+}
+
+func loginKeys(r *http.Request, email string) []string {
+	ip, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		ip = r.RemoteAddr
+	}
+
+	return []string{
+		"ip:" + ip,
+		"email:" + email,
 	}
 }
 
