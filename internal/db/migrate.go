@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"database/sql"
 	"embed"
 	"errors"
@@ -15,7 +16,21 @@ import (
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
-func Migrate(conn *sql.DB) error {
+func Migrate(ctx context.Context, conn *sql.DB) error {
+	done := make(chan error, 1)
+	go func() {
+		done <- migrateUp(conn)
+	}()
+
+	select {
+	case err := <-done:
+		return err
+	case <-ctx.Done():
+		return fmt.Errorf("waiting for migrations: %w", ctx.Err())
+	}
+}
+
+func migrateUp(conn *sql.DB) error {
 	source, err := iofs.New(migrationsFS, "migrations")
 	if err != nil {
 		return fmt.Errorf("loading migrations: %w", err)

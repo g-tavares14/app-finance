@@ -13,23 +13,27 @@ import (
 
 const (
 	readHeaderTimeout = 5 * time.Second
+	readTimeout       = 10 * time.Second
+	writeTimeout      = 15 * time.Second
+	idleTimeout       = 60 * time.Second
 	shutdownTimeout   = 10 * time.Second
+	maxBodyBytes      = 1 << 20
 )
 
 const (
-	maxLoginFailures   = 5
-	loginFailureWindow = 15 * time.Minute
+	maxAuthFailures   = 5
+	authFailureWindow = 15 * time.Minute
 )
 
 type Handlers struct {
-	usecases     *usecases.UseCase
-	loginLimiter *ratelimit.Limiter
+	usecases    *usecases.UseCase
+	authLimiter *ratelimit.Limiter
 }
 
 func NewHandlers(usecases *usecases.UseCase) *Handlers {
 	return &Handlers{
-		usecases:     usecases,
-		loginLimiter: ratelimit.New(maxLoginFailures, loginFailureWindow),
+		usecases:    usecases,
+		authLimiter: ratelimit.New(maxAuthFailures, authFailureWindow),
 	}
 }
 
@@ -47,8 +51,11 @@ func (h *Handlers) Listen(ctx context.Context, port int) error {
 
 	server := &http.Server{
 		Addr:              fmt.Sprintf(":%d", port),
-		Handler:           middleware.Logging(mux),
+		Handler:           middleware.Logging(middleware.LimitBody(mux, maxBodyBytes)),
 		ReadHeaderTimeout: readHeaderTimeout,
+		ReadTimeout:       readTimeout,
+		WriteTimeout:      writeTimeout,
+		IdleTimeout:       idleTimeout,
 	}
 
 	serveErr := make(chan error, 1)

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -15,6 +14,8 @@ import (
 	"app-finance/internal/usecases"
 )
 
+const minSecretBytes = 32
+
 func main() {
 	if err := run(); err != nil {
 		slog.Error("api stopped", "error", err)
@@ -24,8 +25,8 @@ func main() {
 
 func run() error {
 	secret := os.Getenv("JWT_SECRET")
-	if secret == "" {
-		return errors.New("JWT_SECRET environment variable is not set")
+	if len(secret) < minSecretBytes {
+		return fmt.Errorf("JWT_SECRET must be set and have at least %d bytes", minSecretBytes)
 	}
 
 	dsn := os.Getenv("DATABASE_URL")
@@ -42,7 +43,7 @@ func run() error {
 	}
 	defer conn.Close()
 
-	if err := db.Migrate(conn); err != nil {
+	if err := db.Migrate(ctx, conn); err != nil {
 		return fmt.Errorf("migrating database: %w", err)
 	}
 

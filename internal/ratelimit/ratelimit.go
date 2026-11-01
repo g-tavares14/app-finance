@@ -5,8 +5,10 @@ import (
 	"time"
 )
 
+const maxEntries = 10_000
+
 type entry struct {
-	failures  int
+	used      int
 	windowEnd time.Time
 }
 
@@ -29,43 +31,57 @@ func New(max int, window time.Duration) *Limiter {
 	}
 }
 
-func (l *Limiter) Blocked(key string) (time.Duration, bool) {
+func (l *Limiter) Take(key string) (time.Duration, bool) {
 	l.mu.Lock()
 	defer l.mu.Unlock()
 
 	now := l.now()
 	e, ok := l.entries[key]
-	if !ok || !now.Before(e.windowEnd) || e.failures < l.max {
-		return 0, false
+	if ok && now.Before(e.windowEnd) && e.used >= l.max {
+		return e.windowEnd.Sub(now), false
 	}
 
-	return e.windowEnd.Sub(now), true
-}
-
-func (l *Limiter) Fail(key string) {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-
-	now := l.now()
-	l.sweep(now)
-
-	e, ok := l.entries[key]
 	if !ok || !now.Before(e.windowEnd) {
+		l.makeRoom(now)
 		e = entry{windowEnd: now.Add(l.window)}
 	}
-	e.failures++
+	e.used++
 	l.entries[key] = e
+
+	return 0, true
 }
 
-func (l *Limiter) sweep(now time.Time) {
-	if now.Sub(l.lastSweep) < l.window {
+func (l *Limiter) Release(key string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+
+	e, ok := l.entries[key]
+	if !ok {
 		return
 	}
 
-	for key, e := range l.entries {
-		if !now.Before(e.windowEnd) {
+	e.used--
+	if e.used <= 0 {
+		delete(l.entries, key)
+		return
+	}
+	l.entries[key] = e
+}
+
+func (l *Limiter) makeRoom(now time.Time) {
+	if now.Sub(l.lastSweep) >= l.window {
+		for key, e := range l.entries {
+			if !now.Before(e.windowEnd) {
+				delete(l.entries, key)
+			}
+		}
+		l.lastSweep = now
+	}
+
+	if len(l.entries) >= maxEntries {
+		for key := range l.entries {
 			delete(l.entries, key)
+			break
 		}
 	}
-	l.lastSweep = now
 }

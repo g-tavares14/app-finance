@@ -10,8 +10,12 @@ import (
 	"math"
 	"net"
 	"net/http"
+	"net/netip"
 	"strconv"
+	"strings"
 )
+
+const maxEmailKeyLength = 254
 
 func (h *Handlers) registerUserEndpoints(mux *http.ServeMux) {
 	mux.HandleFunc("POST /users", h.addUser)
@@ -92,21 +96,15 @@ func (h *Handlers) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	keys := loginKeys(r, request.Email)
-	for _, key := range keys {
-		if wait, blocked := h.loginLimiter.Blocked(key); blocked {
-			w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(wait.Seconds()))))
-			http.Error(w, "too many login attempts", http.StatusTooManyRequests)
-			return
-		}
+	done, ok := h.takeAttempts(w, loginKeys(r, request.Email))
+	if !ok {
+		return
 	}
 
 	token, err := h.usecases.Login(request.Email, request.Password)
+	done(errors.Is(err, usecases.ErrInvalidCredentials))
 	if err != nil {
 		if errors.Is(err, usecases.ErrInvalidCredentials) {
-			for _, key := range keys {
-				h.loginLimiter.Fail(key)
-			}
 			http.Error(w, err.Error(), http.StatusUnauthorized)
 			return
 		}
@@ -121,16 +119,62 @@ func (h *Handlers) login(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func loginKeys(r *http.Request, email string) []string {
-	ip, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		ip = r.RemoteAddr
+func (h *Handlers) takeAttempts(w http.ResponseWriter, keys []string) (func(failed bool), bool) {
+	taken := make([]string, 0, len(keys))
+	release := func() {
+		for _, key := range taken {
+			h.authLimiter.Release(key)
+		}
 	}
 
-	return []string{
-		"ip:" + ip,
-		"email:" + email,
+	for _, key := range keys {
+		wait, ok := h.authLimiter.Take(key)
+		if !ok {
+			release()
+			w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(wait.Seconds()))))
+			http.Error(w, "too many attempts", http.StatusTooManyRequests)
+			return nil, false
+		}
+		taken = append(taken, key)
 	}
+
+	return func(failed bool) {
+		if !failed {
+			release()
+		}
+	}, true
+}
+
+func loginKeys(r *http.Request, email string) []string {
+	email = strings.ToLower(strings.TrimSpace(email))
+	if len(email) > maxEmailKeyLength {
+		email = email[:maxEmailKeyLength]
+	}
+	keys := []string{"email:" + email}
+
+	if ip, ok := clientIP(r); ok {
+		keys = append(keys, "ip:"+ip)
+	}
+
+	return keys
+}
+
+func clientIP(r *http.Request) (string, bool) {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		host = r.RemoteAddr
+	}
+
+	addr, err := netip.ParseAddr(host)
+	if err != nil {
+		return "", false
+	}
+	addr = addr.Unmap()
+	if addr.IsLoopback() || addr.IsPrivate() || addr.IsLinkLocalUnicast() {
+		return "", false
+	}
+
+	return addr.String(), true
 }
 
 func (h *Handlers) deleteUser(w http.ResponseWriter, r *http.Request) {
@@ -148,7 +192,14 @@ func (h *Handlers) deleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.usecases.Delete(id, request.Password); err != nil {
+	done, ok := h.takeAttempts(w, []string{"user:" + id.String()})
+	if !ok {
+		return
+	}
+
+	err := h.usecases.Delete(id, request.Password)
+	done(errors.Is(err, usecases.ErrInvalidCredentials))
+	if err != nil {
 		if errors.Is(err, usecases.ErrInvalidCredentials) {
 			http.Error(w, err.Error(), http.StatusUnauthorized)
 			return
@@ -181,7 +232,14 @@ func (h *Handlers) updateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := h.usecases.Update(id, request); err != nil {
+	done, ok := h.takeAttempts(w, []string{"user:" + id.String()})
+	if !ok {
+		return
+	}
+
+	err := h.usecases.Update(id, request)
+	done(errors.Is(err, usecases.ErrInvalidCredentials))
+	if err != nil {
 		if errors.Is(err, usecases.ErrInvalidUpdate) || errors.Is(err, usecases.ErrInvalidInput) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
