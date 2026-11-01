@@ -10,12 +10,12 @@ import (
 	"net/http"
 )
 
-func (h *Handlers) registerUserEndpoints() {
-	http.HandleFunc("POST /users", h.addUser)
-	http.HandleFunc("POST /login", h.login)
-	http.HandleFunc("GET /users/me", middleware.Auth(h.usecases)(h.getMe))
-	http.HandleFunc("DELETE /users/me", middleware.Auth(h.usecases)(h.deleteUser))
-	http.HandleFunc("PATCH /users/me", middleware.Auth(h.usecases)(h.updateUser))
+func (h *Handlers) registerUserEndpoints(mux *http.ServeMux) {
+	mux.HandleFunc("POST /users", h.addUser)
+	mux.HandleFunc("POST /login", h.login)
+	mux.HandleFunc("GET /users/me", middleware.Auth(h.usecases)(h.getMe))
+	mux.HandleFunc("DELETE /users/me", middleware.Auth(h.usecases)(h.deleteUser))
+	mux.HandleFunc("PATCH /users/me", middleware.Auth(h.usecases)(h.updateUser))
 }
 
 func (h *Handlers) getMe(w http.ResponseWriter, r *http.Request) {

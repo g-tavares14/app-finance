@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"app-finance/internal/middleware"
 	"app-finance/internal/usecases"
 	"context"
 	"fmt"
@@ -24,11 +25,21 @@ func NewHandlers(usecases *usecases.UseCase) *Handlers {
 	}
 }
 
+func (h *Handlers) health(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	if _, err := w.Write([]byte(`{"status":"ok"}`)); err != nil {
+		slog.Error("failed to write health response", "error", err)
+	}
+}
+
 func (h *Handlers) Listen(ctx context.Context, port int) error {
-	h.registerUserEndpoints()
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /health", h.health)
+	h.registerUserEndpoints(mux)
 
 	server := &http.Server{
 		Addr:              fmt.Sprintf(":%d", port),
+		Handler:           middleware.Logging(mux),
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
 
