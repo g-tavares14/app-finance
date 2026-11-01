@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"app-finance/internal/middleware"
 	"app-finance/internal/models"
 	"app-finance/internal/usecases"
 	"encoding/json"
@@ -13,6 +14,7 @@ func (h *Handlers) registerUserEndpoints() {
 	http.HandleFunc("GET /users", h.getAll)
 	http.HandleFunc("POST /users", h.addUser)
 	http.HandleFunc("POST /login", h.login)
+	http.HandleFunc("DELETE /users/me", middleware.Auth(h.usecases)(h.deleteUser))
 }
 
 func (h *Handlers) getAll(w http.ResponseWriter, r *http.Request) {
@@ -86,4 +88,38 @@ func (h *Handlers) login(w http.ResponseWriter, r *http.Request) {
 	if err := json.NewEncoder(w).Encode(models.LoginResponse{Token: token}); err != nil {
 		slog.Error("failed to encode login response", "error", err)
 	}
+}
+
+func (h *Handlers) deleteUser(w http.ResponseWriter, r *http.Request) {
+	id, ok := middleware.UserID(r.Context())
+	if !ok {
+		slog.Error("user id missing from request context")
+		http.Error(w, "failed to delete user", http.StatusInternalServerError)
+		return
+	}
+
+	var request models.DeleteUser
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "invalid delete user request", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.usecases.Delete(id, request.Password); err != nil {
+		if errors.Is(err, usecases.ErrInvalidCredentials) {
+			http.Error(w, err.Error(), http.StatusUnauthorized)
+			return
+		}
+		if errors.Is(err, usecases.ErrUserNotFound) {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		slog.Error("failed to delete user", "error", err)
+		http.Error(w, "failed to delete user", http.StatusInternalServerError)
+		return
+	}
+
+	slog.Info("user deleted", "user_id", id)
+
+	w.WriteHeader(http.StatusNoContent)
 }

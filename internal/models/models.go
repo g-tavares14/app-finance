@@ -29,3 +29,7 @@ type Login struct {
 type LoginResponse struct {
 	Token string `json:"token"`
 }
+
+type DeleteUser struct {
+	Password string `json:"password"`
+}

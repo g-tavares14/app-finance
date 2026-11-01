@@ -6,6 +6,8 @@ import (
 	"fmt"
 
 	"app-finance/internal/models"
+
+	"github.com/google/uuid"
 )
 
 var ErrNotFound = errors.New("user not found")
@@ -78,4 +80,37 @@ func (u *Users) GetByEmail(email string) (models.User, error) {
 	}
 
 	return user, nil
+}
+
+func (u *Users) GetByID(id uuid.UUID) (models.User, error) {
+	var user models.User
+	err := u.db.QueryRow(
+		"SELECT id, first_name, last_name, email, password_hash FROM users WHERE id = $1",
+		id,
+	).Scan(&user.ID, &user.FirstName, &user.LastName, &user.Email, &user.Password)
+	if errors.Is(err, sql.ErrNoRows) {
+		return models.User{}, ErrNotFound
+	}
+	if err != nil {
+		return models.User{}, fmt.Errorf("getting user by id: %w", err)
+	}
+
+	return user, nil
+}
+
+func (u *Users) Delete(id uuid.UUID) error {
+	result, err := u.db.Exec("DELETE FROM users WHERE id = $1", id)
+	if err != nil {
+		return fmt.Errorf("deleting user: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("checking deleted rows: %w", err)
+	}
+	if rows == 0 {
+		return ErrNotFound
+	}
+
+	return nil
 }

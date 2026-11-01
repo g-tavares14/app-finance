@@ -22,6 +22,8 @@ var ErrEmailAlreadyExists = errors.New("email already exists")
 
 var ErrInvalidCredentials = errors.New("invalid credentials")
 
+var ErrUserNotFound = errors.New("user not found")
+
 var ErrInvalidToken = errors.New("invalid token")
 
 func New(repos *repositories.Repository, jwtSecret []byte) *UseCase {
@@ -119,4 +121,32 @@ func (u *UseCase) Authenticate(tokenString string) (uuid.UUID, error) {
 	}
 
 	return id, nil
+}
+
+func (u *UseCase) Delete(id uuid.UUID, password string) error {
+	user, err := u.repos.User.GetByID(id)
+	if errors.Is(err, userrepo.ErrNotFound) {
+		return ErrUserNotFound
+	}
+	if err != nil {
+		return err
+	}
+
+	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
+	if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
+		return ErrInvalidCredentials
+	}
+	if err != nil {
+		return fmt.Errorf("comparing password: %w", err)
+	}
+
+	err = u.repos.User.Delete(id)
+	if errors.Is(err, userrepo.ErrNotFound) {
+		return ErrUserNotFound
+	}
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
