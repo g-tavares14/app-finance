@@ -40,6 +40,22 @@ func decodeFailed(w http.ResponseWriter, err error, message string) {
 	http.Error(w, message, http.StatusBadRequest)
 }
 
+func writeError(w http.ResponseWriter, err error, message string) {
+	switch {
+	case errors.Is(err, usecases.ErrInvalidInput), errors.Is(err, usecases.ErrInvalidUpdate):
+		http.Error(w, err.Error(), http.StatusBadRequest)
+	case errors.Is(err, usecases.ErrInvalidCredentials):
+		http.Error(w, err.Error(), http.StatusUnauthorized)
+	case errors.Is(err, usecases.ErrUserNotFound):
+		http.Error(w, err.Error(), http.StatusNotFound)
+	case errors.Is(err, usecases.ErrEmailAlreadyExists):
+		http.Error(w, err.Error(), http.StatusConflict)
+	default:
+		slog.Error(message, "error", err)
+		http.Error(w, message, http.StatusInternalServerError)
+	}
+}
+
 func (h *Handlers) getMe(w http.ResponseWriter, r *http.Request) {
 	user, ok := middleware.User(r.Context())
 	if !ok {
@@ -69,16 +85,7 @@ func (h *Handlers) addUser(w http.ResponseWriter, r *http.Request) {
 		Password:  request.Password,
 	})
 	if err != nil {
-		if errors.Is(err, usecases.ErrInvalidInput) {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		if errors.Is(err, usecases.ErrEmailAlreadyExists) {
-			http.Error(w, err.Error(), http.StatusConflict)
-			return
-		}
-		slog.Error("failed to create user", "error", err)
-		http.Error(w, "failed to create user", http.StatusInternalServerError)
+		writeError(w, err, "failed to create user")
 		return
 	}
 
@@ -108,12 +115,7 @@ func (h *Handlers) login(w http.ResponseWriter, r *http.Request) {
 	token, err := h.usecases.Login(request.Email, request.Password)
 	done(errors.Is(err, usecases.ErrInvalidCredentials))
 	if err != nil {
-		if errors.Is(err, usecases.ErrInvalidCredentials) {
-			http.Error(w, err.Error(), http.StatusUnauthorized)
-			return
-		}
-		slog.Error("failed to login user", "error", err)
-		http.Error(w, "failed to login user", http.StatusInternalServerError)
+		writeError(w, err, "failed to login user")
 		return
 	}
 
@@ -216,16 +218,7 @@ func (h *Handlers) deleteUser(w http.ResponseWriter, r *http.Request) {
 	err := h.usecases.Delete(user, request.Password)
 	done(errors.Is(err, usecases.ErrInvalidCredentials))
 	if err != nil {
-		if errors.Is(err, usecases.ErrInvalidCredentials) {
-			http.Error(w, err.Error(), http.StatusUnauthorized)
-			return
-		}
-		if errors.Is(err, usecases.ErrUserNotFound) {
-			http.Error(w, err.Error(), http.StatusNotFound)
-			return
-		}
-		slog.Error("failed to delete user", "error", err)
-		http.Error(w, "failed to delete user", http.StatusInternalServerError)
+		writeError(w, err, "failed to delete user")
 		return
 	}
 
@@ -259,24 +252,7 @@ func (h *Handlers) updateUser(w http.ResponseWriter, r *http.Request) {
 	err := h.usecases.Update(user, request)
 	done(errors.Is(err, usecases.ErrInvalidCredentials))
 	if err != nil {
-		if errors.Is(err, usecases.ErrInvalidUpdate) || errors.Is(err, usecases.ErrInvalidInput) {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		if errors.Is(err, usecases.ErrInvalidCredentials) {
-			http.Error(w, err.Error(), http.StatusUnauthorized)
-			return
-		}
-		if errors.Is(err, usecases.ErrEmailAlreadyExists) {
-			http.Error(w, err.Error(), http.StatusConflict)
-			return
-		}
-		if errors.Is(err, usecases.ErrUserNotFound) {
-			http.Error(w, err.Error(), http.StatusNotFound)
-			return
-		}
-		slog.Error("failed to update user", "error", err)
-		http.Error(w, "failed to update user", http.StatusInternalServerError)
+		writeError(w, err, "failed to update user")
 		return
 	}
 
