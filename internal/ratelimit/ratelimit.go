@@ -69,7 +69,7 @@ func (l *Limiter) Release(key string) {
 }
 
 func (l *Limiter) makeRoom(now time.Time) {
-	if now.Sub(l.lastSweep) >= l.window {
+	if now.Sub(l.lastSweep) >= l.window || len(l.entries) >= maxEntries {
 		for key, e := range l.entries {
 			if !now.Before(e.windowEnd) {
 				delete(l.entries, key)
@@ -78,10 +78,17 @@ func (l *Limiter) makeRoom(now time.Time) {
 		l.lastSweep = now
 	}
 
-	if len(l.entries) >= maxEntries {
-		for key := range l.entries {
+	if len(l.entries) < maxEntries {
+		return
+	}
+	for key, e := range l.entries {
+		if e.used < l.max {
 			delete(l.entries, key)
-			break
+			return
 		}
+	}
+	for key := range l.entries {
+		delete(l.entries, key)
+		return
 	}
 }
