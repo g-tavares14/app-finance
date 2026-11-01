@@ -2,8 +2,12 @@ package main
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"log/slog"
 	"os"
+	"os/signal"
+	"syscall"
 
 	"app-finance/internal/db"
 	"app-finance/internal/handlers"
@@ -12,11 +16,16 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		slog.Error("api stopped", "error", err)
+		os.Exit(1)
+	}
+}
 
+func run() error {
 	secret := os.Getenv("JWT_SECRET")
 	if secret == "" {
-		slog.Error("JWT_SECRET environment variable is not set")
-		os.Exit(1)
+		return errors.New("JWT_SECRET environment variable is not set")
 	}
 
 	dsn := os.Getenv("DATABASE_URL")
@@ -24,26 +33,28 @@ func main() {
 		dsn = "postgres://finance:finance@localhost:5432/finance?sslmode=disable"
 	}
 
-	conn, err := db.Open(context.Background(), dsn)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	conn, err := db.Open(ctx, dsn)
 	if err != nil {
-		slog.Error("failed to connect to database", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("connecting to database: %w", err)
 	}
 	defer conn.Close()
 
 	if err := db.Migrate(conn); err != nil {
-		slog.Error("failed to migrate database", "error", err)
-		os.Exit(1)
+		return fmt.Errorf("migrating database: %w", err)
 	}
 
 	repos := repositories.New(conn)
 	useCase := usecases.New(repos, []byte(secret))
 
 	h := handlers.NewHandlers(useCase)
-	err = h.Listen(8080)
-	if err != nil {
-		slog.Error("server stopped", "error", err)
-		return
+	if err := h.Listen(ctx, 8080); err != nil {
+		return fmt.Errorf("running server: %w", err)
 	}
 
+	slog.Info("server stopped gracefully")
+
+	return nil
 }
