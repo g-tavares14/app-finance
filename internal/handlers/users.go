@@ -58,6 +58,10 @@ func (h *Handlers) addUser(w http.ResponseWriter, r *http.Request) {
 		Password:  request.Password,
 	})
 	if err != nil {
+		if errors.Is(err, usecases.ErrInvalidInput) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
 		if errors.Is(err, usecases.ErrEmailAlreadyExists) {
 			http.Error(w, err.Error(), http.StatusConflict)
 			return
@@ -151,7 +155,7 @@ func (h *Handlers) updateUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.usecases.Update(id, request); err != nil {
-		if errors.Is(err, usecases.ErrInvalidUpdate) {
+		if errors.Is(err, usecases.ErrInvalidUpdate) || errors.Is(err, usecases.ErrInvalidInput) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}

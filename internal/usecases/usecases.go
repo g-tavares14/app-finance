@@ -6,6 +6,7 @@ import (
 	userrepo "app-finance/internal/repositories/users"
 	"errors"
 	"fmt"
+	"net/mail"
 	"strings"
 	"time"
 
@@ -29,6 +30,8 @@ var ErrInvalidToken = errors.New("invalid token")
 
 var ErrInvalidUpdate = errors.New("invalid update data")
 
+var ErrInvalidInput = errors.New("invalid input")
+
 func New(repos *repositories.Repository, jwtSecret []byte) *UseCase {
 	return &UseCase{
 		repos:     repos,
@@ -49,6 +52,13 @@ func (u *UseCase) GetByID(id uuid.UUID) (models.User, error) {
 }
 
 func (u *UseCase) Add(user models.User) (uuid.UUID, error) {
+	if err := validateEmail(user.Email); err != nil {
+		return uuid.Nil, err
+	}
+	if err := validatePassword(user.Password); err != nil {
+		return uuid.Nil, err
+	}
+
 	userExist, err := u.repos.User.EmailExists(user.Email)
 	if err != nil {
 		return uuid.Nil, err
@@ -165,6 +175,16 @@ func (u *UseCase) Update(id uuid.UUID, update models.UpdateUser) error {
 	if nothingToUpdate || isBlank(update.FirstName) || isBlank(update.LastName) || isBlank(update.Email) || isBlank(update.Password) {
 		return ErrInvalidUpdate
 	}
+	if update.Email != nil {
+		if err := validateEmail(*update.Email); err != nil {
+			return err
+		}
+	}
+	if update.Password != nil {
+		if err := validatePassword(*update.Password); err != nil {
+			return err
+		}
+	}
 
 	user, err := u.repos.User.GetByID(id)
 	if errors.Is(err, userrepo.ErrNotFound) {
@@ -227,4 +247,29 @@ func (u *UseCase) Update(id uuid.UUID, update models.UpdateUser) error {
 
 func isBlank(s *string) bool {
 	return s != nil && strings.TrimSpace(*s) == ""
+}
+
+const (
+	minPasswordLength = 5
+	maxPasswordBytes  = 72
+)
+
+func validateEmail(email string) error {
+	addr, err := mail.ParseAddress(email)
+	if err != nil || addr.Address != email {
+		return fmt.Errorf("%w: invalid email format", ErrInvalidInput)
+	}
+
+	return nil
+}
+
+func validatePassword(password string) error {
+	if len(password) < minPasswordLength {
+		return fmt.Errorf("%w: password must have at least %d characters", ErrInvalidInput, minPasswordLength)
+	}
+	if len(password) > maxPasswordBytes {
+		return fmt.Errorf("%w: password must have at most %d bytes", ErrInvalidInput, maxPasswordBytes)
+	}
+
+	return nil
 }
