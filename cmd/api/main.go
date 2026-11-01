@@ -48,8 +48,16 @@ func run() error {
 	}
 	defer conn.Close()
 
-	if err := db.Migrate(ctx, dsn); err != nil {
+	slog.Info("database connection established")
+
+	applied, err := db.Migrate(ctx, dsn)
+	if err != nil {
 		return fmt.Errorf("migrating database: %w", err)
+	}
+	if applied {
+		slog.Info("database migrations applied")
+	} else {
+		slog.Info("database schema is up to date")
 	}
 
 	repos := repositories.New(conn)

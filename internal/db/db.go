@@ -4,7 +4,6 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log/slog"
 	"time"
 
 	_ "github.com/jackc/pgx/v5/stdlib" // registra o driver "pgx" no database/sql
@@ -28,8 +27,6 @@ func Open(ctx context.Context, dsn string) (*sql.DB, error) {
 		conn.Close()
 		return nil, fmt.Errorf("pinging database: %w", err)
 	}
-
-	slog.Info("database connection established")
 
 	return conn, nil
 }
