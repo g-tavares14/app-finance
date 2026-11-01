@@ -20,8 +20,6 @@ type UseCase struct {
 
 var ErrEmailAlreadyExists = errors.New("email already exists")
 
-// ErrInvalidCredentials cobre e-mail inexistente e senha errada de propósito,
-// para a resposta não revelar quais e-mails estão cadastrados.
 var ErrInvalidCredentials = errors.New("invalid credentials")
 
 func New(repos *repositories.Repository, jwtSecret []byte) *UseCase {
@@ -80,7 +78,6 @@ func (u *UseCase) Login(email, password string) (string, error) {
 		return "", err
 	}
 
-	// user.Password guarda o hash bcrypt vindo do banco
 	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
 	if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
 		return "", ErrInvalidCredentials
@@ -89,9 +86,8 @@ func (u *UseCase) Login(email, password string) (string, error) {
 		return "", fmt.Errorf("comparing password: %w", err)
 	}
 
-	// o token só é gerado depois que e-mail e senha foram confirmados
 	claims := jwt.RegisteredClaims{
-		Subject:   user.ID.String(), // o ID do usuário vai aqui
+		Subject:   user.ID.String(),
 		ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)),
 	}
 	token, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(u.jwtSecret)

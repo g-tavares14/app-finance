@@ -26,7 +26,6 @@ type Login struct {
 	Password string `json:"password"`
 }
 
-// LoginResponse devolve o JWT; o ID do usuário vai dentro dele.
 type LoginResponse struct {
 	Token string `json:"token"`
 }
