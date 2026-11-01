@@ -21,13 +21,11 @@ func main() {
 	body, err := json.Marshal(req)
 	if err != nil {
 		log.Fatal(err)
-		return
 	}
 
 	resp, err := http.Post("http://localhost:8080/users", "application/json", bytes.NewReader(body))
 	if err != nil {
 		panic(err)
-		return
 	}
 
 	if resp.StatusCode != http.StatusCreated {
