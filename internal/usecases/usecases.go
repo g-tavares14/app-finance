@@ -22,6 +22,8 @@ var ErrEmailAlreadyExists = errors.New("email already exists")
 
 var ErrInvalidCredentials = errors.New("invalid credentials")
 
+var ErrInvalidToken = errors.New("invalid token")
+
 func New(repos *repositories.Repository, jwtSecret []byte) *UseCase {
 	return &UseCase{
 		repos:     repos,
@@ -96,4 +98,25 @@ func (u *UseCase) Login(email, password string) (string, error) {
 	}
 
 	return token, nil
+}
+
+func (u *UseCase) Authenticate(tokenString string) (uuid.UUID, error) {
+	claims := &jwt.RegisteredClaims{}
+	token, err := jwt.ParseWithClaims(
+		tokenString,
+		claims,
+		func(t *jwt.Token) (any, error) { return u.jwtSecret, nil },
+		jwt.WithValidMethods([]string{jwt.SigningMethodHS256.Alg()}),
+		jwt.WithExpirationRequired(),
+	)
+	if err != nil || !token.Valid {
+		return uuid.Nil, ErrInvalidToken
+	}
+
+	id, err := uuid.Parse(claims.Subject)
+	if err != nil {
+		return uuid.Nil, ErrInvalidToken
+	}
+
+	return id, nil
 }
