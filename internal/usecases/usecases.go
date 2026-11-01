@@ -239,16 +239,6 @@ func (u *UseCase) Update(user models.User, update models.UpdateUser) error {
 		}
 	}
 
-	if update.Email != nil && *update.Email != user.Email {
-		emailExists, err := u.repos.User.EmailExists(*update.Email)
-		if err != nil {
-			return err
-		}
-		if emailExists {
-			return ErrEmailAlreadyExists
-		}
-	}
-
 	changes := models.UpdateUser{
 		FirstName: update.FirstName,
 		LastName:  update.LastName,
