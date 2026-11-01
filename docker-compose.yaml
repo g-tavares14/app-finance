@@ -16,5 +16,17 @@ services:
       timeout: 3s
       retries: 5
 
+  api:
+    build: .
+    container_name: finance-api
+    environment:
+      JWT_SECRET: ${JWT_SECRET:?defina JWT_SECRET no ambiente ou em um arquivo .env}
+      DATABASE_URL: postgres://finance:finance@db:5432/finance?sslmode=disable
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
 volumes:
   data:
