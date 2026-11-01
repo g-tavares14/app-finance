@@ -11,24 +11,35 @@ import (
 )
 
 func (h *Handlers) registerUserEndpoints() {
-	http.HandleFunc("GET /users", h.getAll)
 	http.HandleFunc("POST /users", h.addUser)
 	http.HandleFunc("POST /login", h.login)
+	http.HandleFunc("GET /users/me", middleware.Auth(h.usecases)(h.getMe))
 	http.HandleFunc("DELETE /users/me", middleware.Auth(h.usecases)(h.deleteUser))
 	http.HandleFunc("PATCH /users/me", middleware.Auth(h.usecases)(h.updateUser))
 }
 
-func (h *Handlers) getAll(w http.ResponseWriter, r *http.Request) {
-	users, err := h.usecases.GetAll()
+func (h *Handlers) getMe(w http.ResponseWriter, r *http.Request) {
+	id, ok := middleware.UserID(r.Context())
+	if !ok {
+		slog.Error("user id missing from request context")
+		http.Error(w, "failed to get user", http.StatusInternalServerError)
+		return
+	}
+
+	user, err := h.usecases.GetByID(id)
 	if err != nil {
-		slog.Error("failed to get users", "error", err)
-		http.Error(w, "failed to get users", http.StatusInternalServerError)
+		if errors.Is(err, usecases.ErrUserNotFound) {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		slog.Error("failed to get user", "error", err)
+		http.Error(w, "failed to get user", http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(users); err != nil {
-		slog.Error("failed to encode users response", "error", err)
+	if err := json.NewEncoder(w).Encode(user); err != nil {
+		slog.Error("failed to encode user response", "error", err)
 	}
 }
 

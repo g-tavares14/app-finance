@@ -11,7 +11,6 @@ import (
 
 type Repository struct {
 	User interface {
-		GetAll() ([]models.User, error)
 		Add(newUser models.User) error
 		EmailExists(email string) (bool, error)
 		GetByEmail(email string) (models.User, error)

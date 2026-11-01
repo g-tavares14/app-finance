@@ -36,14 +36,16 @@ func New(repos *repositories.Repository, jwtSecret []byte) *UseCase {
 	}
 }
 
-func (u *UseCase) GetAll() ([]models.User, error) {
-	users, err := u.repos.User.GetAll()
-
+func (u *UseCase) GetByID(id uuid.UUID) (models.User, error) {
+	user, err := u.repos.User.GetByID(id)
+	if errors.Is(err, userrepo.ErrNotFound) {
+		return models.User{}, ErrUserNotFound
+	}
 	if err != nil {
-		return nil, err
+		return models.User{}, err
 	}
 
-	return users, nil
+	return user, nil
 }
 
 func (u *UseCase) Add(user models.User) (uuid.UUID, error) {
