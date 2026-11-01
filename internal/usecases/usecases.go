@@ -69,7 +69,11 @@ func (u *UseCase) Add(user models.User) (uuid.UUID, error) {
 		Password:  string(hash),
 	}
 
-	if err := u.repos.User.Add(repoReq); err != nil {
+	err = u.repos.User.Add(repoReq)
+	if errors.Is(err, userrepo.ErrEmailTaken) {
+		return uuid.Nil, ErrEmailAlreadyExists
+	}
+	if err != nil {
 		return uuid.Nil, err
 	}
 
