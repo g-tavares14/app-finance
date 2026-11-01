@@ -111,12 +111,8 @@ func (u *UseCase) Login(email, password string) (string, error) {
 		return "", err
 	}
 
-	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
-	if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
-		return "", ErrInvalidCredentials
-	}
-	if err != nil {
-		return "", fmt.Errorf("comparing password: %w", err)
+	if err := checkPassword(user.Password, password); err != nil {
+		return "", err
 	}
 
 	claims := tokenClaims{
@@ -175,15 +171,11 @@ func (u *UseCase) passwordVersion(passwordHash string) string {
 }
 
 func (u *UseCase) Delete(user models.User, password string) error {
-	err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
-	if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
-		return ErrInvalidCredentials
-	}
-	if err != nil {
-		return fmt.Errorf("comparing password: %w", err)
+	if err := checkPassword(user.Password, password); err != nil {
+		return err
 	}
 
-	err = u.repos.User.Delete(user.ID)
+	err := u.repos.User.Delete(user.ID)
 	if errors.Is(err, userrepo.ErrNotFound) {
 		return ErrUserNotFound
 	}
@@ -230,12 +222,8 @@ func (u *UseCase) Update(user models.User, update models.UpdateUser) error {
 		if update.CurrentPassword == nil {
 			return ErrInvalidCredentials
 		}
-		err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(*update.CurrentPassword))
-		if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
-			return ErrInvalidCredentials
-		}
-		if err != nil {
-			return fmt.Errorf("comparing password: %w", err)
+		if err := checkPassword(user.Password, *update.CurrentPassword); err != nil {
+			return err
 		}
 	}
 
@@ -262,6 +250,18 @@ func (u *UseCase) Update(user models.User, update models.UpdateUser) error {
 	}
 	if err != nil {
 		return err
+	}
+
+	return nil
+}
+
+func checkPassword(hash, password string) error {
+	err := bcrypt.CompareHashAndPassword([]byte(hash), []byte(password))
+	if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
+		return ErrInvalidCredentials
+	}
+	if err != nil {
+		return fmt.Errorf("comparing password: %w", err)
 	}
 
 	return nil
