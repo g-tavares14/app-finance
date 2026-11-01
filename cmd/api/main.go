@@ -31,6 +31,11 @@ func main() {
 	}
 	defer conn.Close()
 
+	if err := db.Migrate(conn); err != nil {
+		slog.Error("failed to migrate database", "error", err)
+		os.Exit(1)
+	}
+
 	repos := repositories.New(conn)
 	useCase := usecases.New(repos, []byte(secret))
 

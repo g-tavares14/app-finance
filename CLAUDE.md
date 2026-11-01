@@ -15,7 +15,7 @@ Fluxo das camadas: `handlers` → `usecases` → `repositories` → banco.
 
 - `cmd/api`: ponto de entrada da API (exige `JWT_SECRET`, lê `DATABASE_URL` e sobe o servidor na porta 8080).
 - `cmd/client`: script que cria um usuário de exemplo chamando `POST /users` da API.
-- `internal/db`: abre o pool de conexões (`database/sql` com o driver `pgx`).
+- `internal/db`: abre o pool de conexões (`database/sql` com o driver `pgx`) e aplica as migrations embutidas (`migrations/*.sql`, via `golang-migrate`) quando a API sobe. Para mudar o schema, crie um novo par `NNNNNN_nome.up.sql` / `.down.sql`.
 - `internal/repositories`: acesso a dados. Cada entidade fica em um subpacote (ex.: `users`).
 - `internal/middleware`: middlewares HTTP (ex.: `Auth`, que valida o JWT e coloca o ID do usuário no contexto). Dependem de interfaces pequenas, não do `usecases` direto.
 - `internal/models`: structs de domínio e de requisição/resposta.
