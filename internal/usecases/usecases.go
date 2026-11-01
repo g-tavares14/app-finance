@@ -6,6 +6,7 @@ import (
 	userrepo "app-finance/internal/repositories/users"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -25,6 +26,8 @@ var ErrInvalidCredentials = errors.New("invalid credentials")
 var ErrUserNotFound = errors.New("user not found")
 
 var ErrInvalidToken = errors.New("invalid token")
+
+var ErrInvalidUpdate = errors.New("invalid update data")
 
 func New(repos *repositories.Repository, jwtSecret []byte) *UseCase {
 	return &UseCase{
@@ -149,4 +152,73 @@ func (u *UseCase) Delete(id uuid.UUID, password string) error {
 	}
 
 	return nil
+}
+
+func (u *UseCase) Update(id uuid.UUID, update models.UpdateUser) error {
+	nothingToUpdate := update.FirstName == nil && update.LastName == nil && update.Email == nil && update.Password == nil
+	if nothingToUpdate || isBlank(update.FirstName) || isBlank(update.LastName) || isBlank(update.Email) || isBlank(update.Password) {
+		return ErrInvalidUpdate
+	}
+
+	user, err := u.repos.User.GetByID(id)
+	if errors.Is(err, userrepo.ErrNotFound) {
+		return ErrUserNotFound
+	}
+	if err != nil {
+		return err
+	}
+
+	if update.Email != nil || update.Password != nil {
+		if update.CurrentPassword == nil {
+			return ErrInvalidCredentials
+		}
+		err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(*update.CurrentPassword))
+		if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
+			return ErrInvalidCredentials
+		}
+		if err != nil {
+			return fmt.Errorf("comparing password: %w", err)
+		}
+	}
+
+	if update.Email != nil && *update.Email != user.Email {
+		emailExists, err := u.repos.User.EmailExists(*update.Email)
+		if err != nil {
+			return err
+		}
+		if emailExists {
+			return ErrEmailAlreadyExists
+		}
+	}
+
+	changes := models.UpdateUser{
+		FirstName: update.FirstName,
+		LastName:  update.LastName,
+		Email:     update.Email,
+	}
+	if update.Password != nil {
+		hash, err := bcrypt.GenerateFromPassword([]byte(*update.Password), bcrypt.DefaultCost)
+		if err != nil {
+			return fmt.Errorf("hashing password: %w", err)
+		}
+		hashed := string(hash)
+		changes.Password = &hashed
+	}
+
+	err = u.repos.User.Update(id, changes)
+	if errors.Is(err, userrepo.ErrNotFound) {
+		return ErrUserNotFound
+	}
+	if errors.Is(err, userrepo.ErrEmailTaken) {
+		return ErrEmailAlreadyExists
+	}
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func isBlank(s *string) bool {
+	return s != nil && strings.TrimSpace(*s) == ""
 }

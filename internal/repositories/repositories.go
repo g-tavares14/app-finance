@@ -17,6 +17,7 @@ type Repository struct {
 		GetByEmail(email string) (models.User, error)
 		GetByID(id uuid.UUID) (models.User, error)
 		Delete(id uuid.UUID) error
+		Update(id uuid.UUID, updatedUser models.UpdateUser) error
 	}
 }
 

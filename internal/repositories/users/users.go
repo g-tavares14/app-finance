@@ -8,9 +8,14 @@ import (
 	"app-finance/internal/models"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgconn"
 )
 
 var ErrNotFound = errors.New("user not found")
+
+var ErrEmailTaken = errors.New("email already taken")
+
+const uniqueViolationCode = "23505"
 
 type Users struct {
 	db *sql.DB
@@ -107,6 +112,29 @@ func (u *Users) Delete(id uuid.UUID) error {
 	rows, err := result.RowsAffected()
 	if err != nil {
 		return fmt.Errorf("checking deleted rows: %w", err)
+	}
+	if rows == 0 {
+		return ErrNotFound
+	}
+
+	return nil
+}
+
+func (u *Users) Update(id uuid.UUID, updateData models.UpdateUser) error {
+	query := "UPDATE users SET first_name = COALESCE($1, first_name), last_name = COALESCE($2, last_name), email = COALESCE($3, email), password_hash = COALESCE($4, password_hash) WHERE id = $5"
+	result, err := u.db.Exec(query, updateData.FirstName, updateData.LastName, updateData.Email, updateData.Password, id)
+
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == uniqueViolationCode {
+		return ErrEmailTaken
+	}
+	if err != nil {
+		return fmt.Errorf("updating user: %w", err)
+	}
+
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("checking updated rows: %w", err)
 	}
 	if rows == 0 {
 		return ErrNotFound

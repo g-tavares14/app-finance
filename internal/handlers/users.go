@@ -15,6 +15,7 @@ func (h *Handlers) registerUserEndpoints() {
 	http.HandleFunc("POST /users", h.addUser)
 	http.HandleFunc("POST /login", h.login)
 	http.HandleFunc("DELETE /users/me", middleware.Auth(h.usecases)(h.deleteUser))
+	http.HandleFunc("PATCH /users/me", middleware.Auth(h.usecases)(h.updateUser))
 }
 
 func (h *Handlers) getAll(w http.ResponseWriter, r *http.Request) {
@@ -120,6 +121,47 @@ func (h *Handlers) deleteUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	slog.Info("user deleted", "user_id", id)
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handlers) updateUser(w http.ResponseWriter, r *http.Request) {
+	id, ok := middleware.UserID(r.Context())
+	if !ok {
+		slog.Error("user id missing from request context")
+		http.Error(w, "failed to update user", http.StatusInternalServerError)
+		return
+	}
+
+	var request models.UpdateUser
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		http.Error(w, "invalid update user request", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.usecases.Update(id, request); err != nil {
+		if errors.Is(err, usecases.ErrInvalidUpdate) {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		if errors.Is(err, usecases.ErrInvalidCredentials) {
+			http.Error(w, err.Error(), http.StatusUnauthorized)
+			return
+		}
+		if errors.Is(err, usecases.ErrEmailAlreadyExists) {
+			http.Error(w, err.Error(), http.StatusConflict)
+			return
+		}
+		if errors.Is(err, usecases.ErrUserNotFound) {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		slog.Error("failed to update user", "error", err)
+		http.Error(w, "failed to update user", http.StatusInternalServerError)
+		return
+	}
+
+	slog.Info("user updated", "user_id", id)
 
 	w.WriteHeader(http.StatusNoContent)
 }
