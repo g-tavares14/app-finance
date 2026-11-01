@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 )
@@ -25,16 +26,18 @@ func main() {
 
 	resp, err := http.Post("http://localhost:8080/users", "application/json", bytes.NewReader(body))
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
+	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusCreated {
-		panic("failed to create user")
+		message, _ := io.ReadAll(resp.Body)
+		log.Fatalf("failed to create user: %s: %s", resp.Status, bytes.TrimSpace(message))
 	}
 
 	var responseApi models.CreateUserResponse
 	if err := json.NewDecoder(resp.Body).Decode(&responseApi); err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
 	fmt.Println("User created", responseApi)
