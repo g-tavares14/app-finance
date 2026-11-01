@@ -37,20 +37,25 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	go func() {
+		<-ctx.Done()
+		stop()
+	}()
+
 	conn, err := db.Open(ctx, dsn)
 	if err != nil {
 		return fmt.Errorf("connecting to database: %w", err)
 	}
 	defer conn.Close()
 
-	if err := db.Migrate(ctx, conn); err != nil {
+	if err := db.Migrate(ctx, dsn); err != nil {
 		return fmt.Errorf("migrating database: %w", err)
 	}
 
 	repos := repositories.New(conn)
 	useCase := usecases.New(repos, []byte(secret))
 
-	h := handlers.NewHandlers(useCase)
+	h := handlers.NewHandlers(useCase, os.Getenv("TRUST_PROXY") == "true")
 	if err := h.Listen(ctx, 8080); err != nil {
 		return fmt.Errorf("running server: %w", err)
 	}

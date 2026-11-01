@@ -13,11 +13,11 @@ Convenções do projeto `app-finance` (API em Go com Postgres).
 
 Fluxo das camadas: `handlers` → `usecases` → `repositories` → banco.
 
-- `cmd/api`: ponto de entrada da API (exige `JWT_SECRET` com no mínimo 32 bytes, lê `DATABASE_URL` e sobe o servidor na porta 8080).
+- `cmd/api`: ponto de entrada da API (exige `JWT_SECRET` com no mínimo 32 bytes, lê `DATABASE_URL`, aceita `TRUST_PROXY=true` para usar o último `X-Forwarded-For` como IP do cliente quando há um proxy confiável na frente, e sobe o servidor na porta 8080).
 - `cmd/client`: script que cria um usuário de exemplo chamando `POST /users` da API.
 - `internal/db`: abre o pool de conexões (`database/sql` com o driver `pgx`) e aplica as migrations embutidas (`migrations/*.sql`, via `golang-migrate`) quando a API sobe. Para mudar o schema, crie um novo par `NNNNNN_nome.up.sql` / `.down.sql`.
 - `internal/repositories`: acesso a dados. Cada entidade fica em um subpacote (ex.: `users`).
-- `internal/middleware`: middlewares HTTP (ex.: `Auth`, que valida o JWT e coloca o ID do usuário no contexto). Dependem de interfaces pequenas, não do `usecases` direto.
+- `internal/middleware`: middlewares HTTP (ex.: `Auth`, que valida o JWT e coloca o usuário autenticado no contexto). Dependem de interfaces pequenas, não do `usecases` direto.
 - `internal/models`: structs de domínio e de requisição/resposta.
 
 ## Convenções de código
@@ -29,6 +29,6 @@ Fluxo das camadas: `handlers` → `usecases` → `repositories` → banco.
 
 - Só o banco: `docker compose up -d db` (Postgres 17 na porta 5432). Use esse comando para rodar a API com `go run ./cmd/api`.
 - Banco e API: `JWT_SECRET=... docker compose up -d --build` (a API sobe na porta 8080 depois que o banco estiver saudável; `JWT_SECRET` também pode vir de um `.env`, que não é versionado).
-- Build e verificação: `go build ./... && go vet ./...`.
+- Build e verificação: `go build ./... && go vet ./... && go test ./...`.
 - Imagem da API: `Dockerfile` multi-stage (binário estático em imagem `distroless`), usado pelo serviço `api` do compose.
 - DSN padrão: `postgres://finance:finance@localhost:5432/finance?sslmode=disable` (sobrescreva com `DATABASE_URL`).

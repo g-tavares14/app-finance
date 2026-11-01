@@ -2,21 +2,23 @@ package middleware
 
 import (
 	"context"
+	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 
-	"github.com/google/uuid"
+	"app-finance/internal/models"
 )
 
 type contextKey string
 
-const userIDKey contextKey = "user_id"
+const userKey contextKey = "user"
 
 type Authenticator interface {
-	Authenticate(token string) (uuid.UUID, error)
+	Authenticate(token string) (models.User, error)
 }
 
-func Auth(a Authenticator) func(http.HandlerFunc) http.HandlerFunc {
+func Auth(a Authenticator, errInvalidToken error) func(http.HandlerFunc) http.HandlerFunc {
 	return func(next http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
 			token, found := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
@@ -25,19 +27,24 @@ func Auth(a Authenticator) func(http.HandlerFunc) http.HandlerFunc {
 				return
 			}
 
-			id, err := a.Authenticate(token)
-			if err != nil {
+			user, err := a.Authenticate(token)
+			if errors.Is(err, errInvalidToken) {
 				http.Error(w, "invalid token", http.StatusUnauthorized)
 				return
 			}
+			if err != nil {
+				slog.Error("failed to authenticate request", "error", err)
+				http.Error(w, "failed to authenticate request", http.StatusInternalServerError)
+				return
+			}
 
-			ctx := context.WithValue(r.Context(), userIDKey, id)
+			ctx := context.WithValue(r.Context(), userKey, user)
 			next(w, r.WithContext(ctx))
 		}
 	}
 }
 
-func UserID(ctx context.Context) (uuid.UUID, bool) {
-	id, ok := ctx.Value(userIDKey).(uuid.UUID)
-	return id, ok
+func User(ctx context.Context) (models.User, bool) {
+	user, ok := ctx.Value(userKey).(models.User)
+	return user, ok
 }

@@ -50,20 +50,10 @@ func New(repos *repositories.Repository, jwtSecret []byte) *UseCase {
 	}
 }
 
-func (u *UseCase) GetByID(id uuid.UUID) (models.User, error) {
-	user, err := u.repos.User.GetByID(id)
-	if errors.Is(err, userrepo.ErrNotFound) {
-		return models.User{}, ErrUserNotFound
-	}
-	if err != nil {
-		return models.User{}, err
-	}
-
-	return user, nil
-}
-
 func (u *UseCase) Add(user models.User) (uuid.UUID, error) {
-	user.Email = normalizeEmail(user.Email)
+	user.Email = NormalizeEmail(user.Email)
+	user.FirstName = strings.TrimSpace(user.FirstName)
+	user.LastName = strings.TrimSpace(user.LastName)
 
 	if err := validateName(user.FirstName); err != nil {
 		return uuid.Nil, err
@@ -112,7 +102,7 @@ func (u *UseCase) Add(user models.User) (uuid.UUID, error) {
 }
 
 func (u *UseCase) Login(email, password string) (string, error) {
-	user, err := u.repos.User.GetByEmail(normalizeEmail(email))
+	user, err := u.repos.User.GetByEmail(NormalizeEmail(email))
 	if errors.Is(err, userrepo.ErrNotFound) {
 		_ = bcrypt.CompareHashAndPassword(dummyHash, []byte(password))
 		return "", ErrInvalidCredentials
@@ -144,7 +134,7 @@ func (u *UseCase) Login(email, password string) (string, error) {
 	return token, nil
 }
 
-func (u *UseCase) Authenticate(tokenString string) (uuid.UUID, error) {
+func (u *UseCase) Authenticate(tokenString string) (models.User, error) {
 	claims := &tokenClaims{}
 	token, err := jwt.ParseWithClaims(
 		tokenString,
@@ -154,27 +144,27 @@ func (u *UseCase) Authenticate(tokenString string) (uuid.UUID, error) {
 		jwt.WithExpirationRequired(),
 	)
 	if err != nil || !token.Valid {
-		return uuid.Nil, ErrInvalidToken
+		return models.User{}, ErrInvalidToken
 	}
 
 	id, err := uuid.Parse(claims.Subject)
 	if err != nil {
-		return uuid.Nil, ErrInvalidToken
+		return models.User{}, ErrInvalidToken
 	}
 
 	user, err := u.repos.User.GetByID(id)
 	if errors.Is(err, userrepo.ErrNotFound) {
-		return uuid.Nil, ErrInvalidToken
+		return models.User{}, ErrInvalidToken
 	}
 	if err != nil {
-		return uuid.Nil, err
+		return models.User{}, fmt.Errorf("loading authenticated user: %w", err)
 	}
 
 	if !hmac.Equal([]byte(claims.PasswordVersion), []byte(u.passwordVersion(user.Password))) {
-		return uuid.Nil, ErrInvalidToken
+		return models.User{}, ErrInvalidToken
 	}
 
-	return id, nil
+	return user, nil
 }
 
 func (u *UseCase) passwordVersion(passwordHash string) string {
@@ -184,16 +174,8 @@ func (u *UseCase) passwordVersion(passwordHash string) string {
 	return hex.EncodeToString(mac.Sum(nil)[:8])
 }
 
-func (u *UseCase) Delete(id uuid.UUID, password string) error {
-	user, err := u.repos.User.GetByID(id)
-	if errors.Is(err, userrepo.ErrNotFound) {
-		return ErrUserNotFound
-	}
-	if err != nil {
-		return err
-	}
-
-	err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
+func (u *UseCase) Delete(user models.User, password string) error {
+	err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password))
 	if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
 		return ErrInvalidCredentials
 	}
@@ -201,7 +183,7 @@ func (u *UseCase) Delete(id uuid.UUID, password string) error {
 		return fmt.Errorf("comparing password: %w", err)
 	}
 
-	err = u.repos.User.Delete(id)
+	err = u.repos.User.Delete(user.ID)
 	if errors.Is(err, userrepo.ErrNotFound) {
 		return ErrUserNotFound
 	}
@@ -212,23 +194,27 @@ func (u *UseCase) Delete(id uuid.UUID, password string) error {
 	return nil
 }
 
-func (u *UseCase) Update(id uuid.UUID, update models.UpdateUser) error {
+func (u *UseCase) Update(user models.User, update models.UpdateUser) error {
 	nothingToUpdate := update.FirstName == nil && update.LastName == nil && update.Email == nil && update.Password == nil
 	if nothingToUpdate || isBlank(update.FirstName) || isBlank(update.LastName) || isBlank(update.Email) || isBlank(update.Password) {
 		return ErrInvalidUpdate
 	}
 	if update.FirstName != nil {
-		if err := validateName(*update.FirstName); err != nil {
+		firstName := strings.TrimSpace(*update.FirstName)
+		update.FirstName = &firstName
+		if err := validateName(firstName); err != nil {
 			return err
 		}
 	}
 	if update.LastName != nil {
-		if err := validateName(*update.LastName); err != nil {
+		lastName := strings.TrimSpace(*update.LastName)
+		update.LastName = &lastName
+		if err := validateName(lastName); err != nil {
 			return err
 		}
 	}
 	if update.Email != nil {
-		email := normalizeEmail(*update.Email)
+		email := NormalizeEmail(*update.Email)
 		update.Email = &email
 		if err := validateEmail(email); err != nil {
 			return err
@@ -240,19 +226,11 @@ func (u *UseCase) Update(id uuid.UUID, update models.UpdateUser) error {
 		}
 	}
 
-	user, err := u.repos.User.GetByID(id)
-	if errors.Is(err, userrepo.ErrNotFound) {
-		return ErrUserNotFound
-	}
-	if err != nil {
-		return err
-	}
-
 	if update.Email != nil || update.Password != nil {
 		if update.CurrentPassword == nil {
 			return ErrInvalidCredentials
 		}
-		err = bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(*update.CurrentPassword))
+		err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(*update.CurrentPassword))
 		if errors.Is(err, bcrypt.ErrMismatchedHashAndPassword) {
 			return ErrInvalidCredentials
 		}
@@ -285,7 +263,7 @@ func (u *UseCase) Update(id uuid.UUID, update models.UpdateUser) error {
 		changes.Password = &hashed
 	}
 
-	err = u.repos.User.Update(id, changes)
+	err := u.repos.User.Update(user.ID, changes)
 	if errors.Is(err, userrepo.ErrNotFound) {
 		return ErrUserNotFound
 	}
@@ -307,10 +285,10 @@ const (
 	minPasswordLength = 5
 	maxPasswordBytes  = 72
 	maxNameLength     = 100
-	maxEmailLength    = 254
+	MaxEmailLength    = 254
 )
 
-func normalizeEmail(email string) string {
+func NormalizeEmail(email string) string {
 	return strings.ToLower(strings.TrimSpace(email))
 }
 
@@ -327,7 +305,7 @@ func validateName(name string) error {
 
 func validateEmail(email string) error {
 	addr, err := mail.ParseAddress(email)
-	if err != nil || addr.Address != email || len(email) > maxEmailLength {
+	if err != nil || addr.Address != email || len(email) > MaxEmailLength {
 		return fmt.Errorf("%w: invalid email format", ErrInvalidInput)
 	}
 

@@ -22,18 +22,23 @@ const (
 
 const (
 	maxAuthFailures   = 5
+	maxEmailFailures  = 25
 	authFailureWindow = 15 * time.Minute
 )
 
 type Handlers struct {
-	usecases    *usecases.UseCase
-	authLimiter *ratelimit.Limiter
+	usecases     *usecases.UseCase
+	authLimiter  *ratelimit.Limiter
+	emailLimiter *ratelimit.Limiter
+	trustProxy   bool
 }
 
-func NewHandlers(usecases *usecases.UseCase) *Handlers {
+func NewHandlers(usecases *usecases.UseCase, trustProxy bool) *Handlers {
 	return &Handlers{
-		usecases:    usecases,
-		authLimiter: ratelimit.New(maxAuthFailures, authFailureWindow),
+		usecases:     usecases,
+		authLimiter:  ratelimit.New(maxAuthFailures, authFailureWindow),
+		emailLimiter: ratelimit.New(maxEmailFailures, authFailureWindow),
+		trustProxy:   trustProxy,
 	}
 }
 
@@ -51,7 +56,7 @@ func (h *Handlers) Listen(ctx context.Context, port int) error {
 
 	server := &http.Server{
 		Addr:              fmt.Sprintf(":%d", port),
-		Handler:           middleware.Logging(middleware.LimitBody(mux, maxBodyBytes)),
+		Handler:           middleware.LimitBody(middleware.Logging(mux), maxBodyBytes),
 		ReadHeaderTimeout: readHeaderTimeout,
 		ReadTimeout:       readTimeout,
 		WriteTimeout:      writeTimeout,

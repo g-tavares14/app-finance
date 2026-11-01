@@ -3,6 +3,7 @@ package handlers
 import (
 	"app-finance/internal/middleware"
 	"app-finance/internal/models"
+	"app-finance/internal/ratelimit"
 	"app-finance/internal/usecases"
 	"encoding/json"
 	"errors"
@@ -15,31 +16,34 @@ import (
 	"strings"
 )
 
-const maxEmailKeyLength = 254
+type attemptKey struct {
+	limiter *ratelimit.Limiter
+	key     string
+}
 
 func (h *Handlers) registerUserEndpoints(mux *http.ServeMux) {
+	auth := middleware.Auth(h.usecases, usecases.ErrInvalidToken)
+
 	mux.HandleFunc("POST /users", h.addUser)
 	mux.HandleFunc("POST /login", h.login)
-	mux.HandleFunc("GET /users/me", middleware.Auth(h.usecases)(h.getMe))
-	mux.HandleFunc("DELETE /users/me", middleware.Auth(h.usecases)(h.deleteUser))
-	mux.HandleFunc("PATCH /users/me", middleware.Auth(h.usecases)(h.updateUser))
+	mux.HandleFunc("GET /users/me", auth(h.getMe))
+	mux.HandleFunc("DELETE /users/me", auth(h.deleteUser))
+	mux.HandleFunc("PATCH /users/me", auth(h.updateUser))
+}
+
+func decodeFailed(w http.ResponseWriter, err error, message string) {
+	var tooLarge *http.MaxBytesError
+	if errors.As(err, &tooLarge) {
+		http.Error(w, "request body too large", http.StatusRequestEntityTooLarge)
+		return
+	}
+	http.Error(w, message, http.StatusBadRequest)
 }
 
 func (h *Handlers) getMe(w http.ResponseWriter, r *http.Request) {
-	id, ok := middleware.UserID(r.Context())
+	user, ok := middleware.User(r.Context())
 	if !ok {
-		slog.Error("user id missing from request context")
-		http.Error(w, "failed to get user", http.StatusInternalServerError)
-		return
-	}
-
-	user, err := h.usecases.GetByID(id)
-	if err != nil {
-		if errors.Is(err, usecases.ErrUserNotFound) {
-			http.Error(w, err.Error(), http.StatusNotFound)
-			return
-		}
-		slog.Error("failed to get user", "error", err)
+		slog.Error("user missing from request context")
 		http.Error(w, "failed to get user", http.StatusInternalServerError)
 		return
 	}
@@ -54,7 +58,7 @@ func (h *Handlers) addUser(w http.ResponseWriter, r *http.Request) {
 	var request models.CreateUser
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		http.Error(w, "invalid user request", http.StatusBadRequest)
+		decodeFailed(w, err, "invalid user request")
 		return
 	}
 
@@ -92,11 +96,11 @@ func (h *Handlers) login(w http.ResponseWriter, r *http.Request) {
 	var request models.Login
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		http.Error(w, "invalid login request", http.StatusBadRequest)
+		decodeFailed(w, err, "invalid login request")
 		return
 	}
 
-	done, ok := h.takeAttempts(w, loginKeys(r, request.Email))
+	done, ok := h.takeAttempts(w, h.loginKeys(r, request.Email))
 	if !ok {
 		return
 	}
@@ -119,23 +123,23 @@ func (h *Handlers) login(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *Handlers) takeAttempts(w http.ResponseWriter, keys []string) (func(failed bool), bool) {
-	taken := make([]string, 0, len(keys))
+func (h *Handlers) takeAttempts(w http.ResponseWriter, keys []attemptKey) (func(failed bool), bool) {
+	taken := make([]attemptKey, 0, len(keys))
 	release := func() {
-		for _, key := range taken {
-			h.authLimiter.Release(key)
+		for _, k := range taken {
+			k.limiter.Release(k.key)
 		}
 	}
 
-	for _, key := range keys {
-		wait, ok := h.authLimiter.Take(key)
+	for _, k := range keys {
+		wait, ok := k.limiter.Take(k.key)
 		if !ok {
 			release()
 			w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(wait.Seconds()))))
 			http.Error(w, "too many attempts", http.StatusTooManyRequests)
 			return nil, false
 		}
-		taken = append(taken, key)
+		taken = append(taken, k)
 	}
 
 	return func(failed bool) {
@@ -145,24 +149,33 @@ func (h *Handlers) takeAttempts(w http.ResponseWriter, keys []string) (func(fail
 	}, true
 }
 
-func loginKeys(r *http.Request, email string) []string {
-	email = strings.ToLower(strings.TrimSpace(email))
-	if len(email) > maxEmailKeyLength {
-		email = email[:maxEmailKeyLength]
-	}
-	keys := []string{"email:" + email}
-
-	if ip, ok := clientIP(r); ok {
-		keys = append(keys, "ip:"+ip)
+func (h *Handlers) loginKeys(r *http.Request, email string) []attemptKey {
+	email = usecases.NormalizeEmail(email)
+	if len(email) > usecases.MaxEmailLength {
+		email = email[:usecases.MaxEmailLength]
 	}
 
-	return keys
+	ip, ok := h.clientIP(r)
+	if !ok {
+		return []attemptKey{{h.authLimiter, "email:" + email}}
+	}
+
+	return []attemptKey{
+		{h.emailLimiter, "email:" + email},
+		{h.authLimiter, "email+ip:" + email + "|" + ip},
+		{h.authLimiter, "ip:" + ip},
+	}
 }
 
-func clientIP(r *http.Request) (string, bool) {
+func (h *Handlers) clientIP(r *http.Request) (string, bool) {
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err != nil {
 		host = r.RemoteAddr
+	}
+
+	if forwarded := strings.Join(r.Header.Values("X-Forwarded-For"), ","); h.trustProxy && forwarded != "" {
+		parts := strings.Split(forwarded, ",")
+		host = strings.TrimSpace(parts[len(parts)-1])
 	}
 
 	addr, err := netip.ParseAddr(host)
@@ -173,14 +186,17 @@ func clientIP(r *http.Request) (string, bool) {
 	if addr.IsLoopback() || addr.IsPrivate() || addr.IsLinkLocalUnicast() {
 		return "", false
 	}
+	if addr.Is6() {
+		return netip.PrefixFrom(addr, 64).Masked().String(), true
+	}
 
 	return addr.String(), true
 }
 
 func (h *Handlers) deleteUser(w http.ResponseWriter, r *http.Request) {
-	id, ok := middleware.UserID(r.Context())
+	user, ok := middleware.User(r.Context())
 	if !ok {
-		slog.Error("user id missing from request context")
+		slog.Error("user missing from request context")
 		http.Error(w, "failed to delete user", http.StatusInternalServerError)
 		return
 	}
@@ -188,16 +204,16 @@ func (h *Handlers) deleteUser(w http.ResponseWriter, r *http.Request) {
 	var request models.DeleteUser
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		http.Error(w, "invalid delete user request", http.StatusBadRequest)
+		decodeFailed(w, err, "invalid delete user request")
 		return
 	}
 
-	done, ok := h.takeAttempts(w, []string{"user:" + id.String()})
+	done, ok := h.takeAttempts(w, []attemptKey{{h.authLimiter, "user:" + user.ID.String()}})
 	if !ok {
 		return
 	}
 
-	err := h.usecases.Delete(id, request.Password)
+	err := h.usecases.Delete(user, request.Password)
 	done(errors.Is(err, usecases.ErrInvalidCredentials))
 	if err != nil {
 		if errors.Is(err, usecases.ErrInvalidCredentials) {
@@ -213,31 +229,34 @@ func (h *Handlers) deleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	slog.Info("user deleted", "user_id", id)
+	slog.Info("user deleted", "user_id", user.ID)
 
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (h *Handlers) updateUser(w http.ResponseWriter, r *http.Request) {
-	id, ok := middleware.UserID(r.Context())
+	user, ok := middleware.User(r.Context())
 	if !ok {
-		slog.Error("user id missing from request context")
+		slog.Error("user missing from request context")
 		http.Error(w, "failed to update user", http.StatusInternalServerError)
 		return
 	}
 
 	var request models.UpdateUser
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		http.Error(w, "invalid update user request", http.StatusBadRequest)
+		decodeFailed(w, err, "invalid update user request")
 		return
 	}
 
-	done, ok := h.takeAttempts(w, []string{"user:" + id.String()})
-	if !ok {
-		return
+	done := func(bool) {}
+	if request.Email != nil || request.Password != nil {
+		done, ok = h.takeAttempts(w, []attemptKey{{h.authLimiter, "user:" + user.ID.String()}})
+		if !ok {
+			return
+		}
 	}
 
-	err := h.usecases.Update(id, request)
+	err := h.usecases.Update(user, request)
 	done(errors.Is(err, usecases.ErrInvalidCredentials))
 	if err != nil {
 		if errors.Is(err, usecases.ErrInvalidUpdate) || errors.Is(err, usecases.ErrInvalidInput) {
@@ -261,7 +280,7 @@ func (h *Handlers) updateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	slog.Info("user updated", "user_id", id)
+	slog.Info("user updated", "user_id", user.ID)
 
 	w.WriteHeader(http.StatusNoContent)
 }
