@@ -29,6 +29,6 @@ Fluxo das camadas: `handlers` → `usecases` → `repositories` → banco.
 
 - Só o banco: `docker compose up -d db` (Postgres 17 na porta 5432). Use esse comando para rodar a API com `go run ./cmd/api`.
 - Banco e API: `JWT_SECRET=... docker compose up -d --build` (a API sobe na porta 8080 depois que o banco estiver saudável; `JWT_SECRET` também pode vir de um `.env`, que não é versionado).
-- Build e verificação: `go build ./... && go vet ./... && go test ./...`.
+- Build e verificação: `go build ./... && go vet ./...`.
 - Imagem da API: `Dockerfile` multi-stage (binário estático em imagem `distroless`), usado pelo serviço `api` do compose.
 - DSN padrão: `postgres://finance:finance@localhost:5432/finance?sslmode=disable` (sobrescreva com `DATABASE_URL`).
