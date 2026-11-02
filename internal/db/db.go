@@ -17,7 +17,7 @@ func Open(ctx context.Context, dsn string) (*sql.DB, error) {
 	}
 
 	conn.SetMaxOpenConns(10)
-	conn.SetMaxIdleConns(5)
+	conn.SetMaxIdleConns(10)
 	conn.SetConnMaxLifetime(5 * time.Minute)
 
 	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)

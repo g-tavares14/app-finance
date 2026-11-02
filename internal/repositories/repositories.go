@@ -13,7 +13,6 @@ import (
 type Repository struct {
 	User interface {
 		Add(ctx context.Context, newUser models.User) error
-		EmailExists(ctx context.Context, email string) (bool, error)
 		GetByEmail(ctx context.Context, email string) (models.User, error)
 		GetByID(ctx context.Context, id uuid.UUID) (models.User, error)
 		Delete(ctx context.Context, id uuid.UUID) error

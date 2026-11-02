@@ -37,10 +37,7 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	go func() {
-		<-ctx.Done()
-		stop()
-	}()
+	context.AfterFunc(ctx, stop)
 
 	conn, err := db.Open(ctx, dsn)
 	if err != nil {

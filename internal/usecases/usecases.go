@@ -69,29 +69,14 @@ func (u *UseCase) Add(ctx context.Context, user models.User) (uuid.UUID, error) 
 		return uuid.Nil, err
 	}
 
-	userExist, err := u.repos.User.EmailExists(ctx, user.Email)
+	hash, err := hashPassword(user.Password)
 	if err != nil {
 		return uuid.Nil, err
 	}
+	user.ID = uuid.New()
+	user.Password = hash
 
-	if userExist {
-		return uuid.Nil, ErrEmailAlreadyExists
-	}
-
-	hash, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
-	if err != nil {
-		return uuid.Nil, fmt.Errorf("hashing password: %w", err)
-	}
-
-	repoReq := models.User{
-		ID:        uuid.New(),
-		FirstName: user.FirstName,
-		LastName:  user.LastName,
-		Email:     user.Email,
-		Password:  string(hash),
-	}
-
-	err = u.repos.User.Add(ctx, repoReq)
+	err = u.repos.User.Add(ctx, user)
 	if errors.Is(err, userrepo.ErrEmailTaken) {
 		return uuid.Nil, ErrEmailAlreadyExists
 	}
@@ -99,7 +84,7 @@ func (u *UseCase) Add(ctx context.Context, user models.User) (uuid.UUID, error) 
 		return uuid.Nil, err
 	}
 
-	return repoReq.ID, nil
+	return user.ID, nil
 }
 
 func (u *UseCase) Login(ctx context.Context, email, password string) (string, error) {
@@ -219,7 +204,7 @@ func (u *UseCase) Update(ctx context.Context, user models.User, update models.Up
 		}
 	}
 
-	if update.Email != nil || update.Password != nil {
+	if update.ChangesCredentials() {
 		if update.CurrentPassword == nil {
 			return ErrInvalidCredentials
 		}
@@ -234,12 +219,11 @@ func (u *UseCase) Update(ctx context.Context, user models.User, update models.Up
 		Email:     update.Email,
 	}
 	if update.Password != nil {
-		hash, err := bcrypt.GenerateFromPassword([]byte(*update.Password), bcrypt.DefaultCost)
+		hash, err := hashPassword(*update.Password)
 		if err != nil {
-			return fmt.Errorf("hashing password: %w", err)
+			return err
 		}
-		hashed := string(hash)
-		changes.Password = &hashed
+		changes.Password = &hash
 	}
 
 	err := u.repos.User.Update(ctx, user.ID, changes)
@@ -268,6 +252,15 @@ func checkPassword(hash, password string) error {
 	return nil
 }
 
+func hashPassword(password string) (string, error) {
+	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
+	if err != nil {
+		return "", fmt.Errorf("hashing password: %w", err)
+	}
+
+	return string(hash), nil
+}
+
 func isBlank(s *string) bool {
 	return s != nil && strings.TrimSpace(*s) == ""
 }
@@ -284,7 +277,7 @@ func NormalizeEmail(email string) string {
 }
 
 func validateName(name string) error {
-	if strings.TrimSpace(name) == "" {
+	if name == "" {
 		return fmt.Errorf("%w: name must not be blank", ErrInvalidInput)
 	}
 	if utf8.RuneCountInString(name) > maxNameLength {

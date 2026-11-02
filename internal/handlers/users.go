@@ -107,13 +107,13 @@ func (h *Handlers) login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	done, ok := h.takeAttempts(w, h.loginKeys(r, request.Email))
+	done, ok := takeAttempts(w, h.loginKeys(r, request.Email))
 	if !ok {
 		return
 	}
 
 	token, err := h.usecases.Login(r.Context(), request.Email, request.Password)
-	done(errors.Is(err, usecases.ErrInvalidCredentials))
+	done(err)
 	if err != nil {
 		writeError(w, err, "failed to login user")
 		return
@@ -125,30 +125,32 @@ func (h *Handlers) login(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (h *Handlers) takeAttempts(w http.ResponseWriter, keys []attemptKey) (func(failed bool), bool) {
-	taken := make([]attemptKey, 0, len(keys))
-	release := func() {
-		for _, k := range taken {
-			k.limiter.Release(k.key)
-		}
-	}
-
-	for _, k := range keys {
+func takeAttempts(w http.ResponseWriter, keys []attemptKey) (func(err error), bool) {
+	for i, k := range keys {
 		wait, ok := k.limiter.Take(k.key)
 		if !ok {
-			release()
+			release(keys[:i])
 			w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(wait.Seconds()))))
 			http.Error(w, "too many attempts", http.StatusTooManyRequests)
 			return nil, false
 		}
-		taken = append(taken, k)
 	}
 
-	return func(failed bool) {
-		if !failed {
-			release()
+	return func(err error) {
+		if !errors.Is(err, usecases.ErrInvalidCredentials) {
+			release(keys)
 		}
 	}, true
+}
+
+func release(keys []attemptKey) {
+	for _, k := range keys {
+		k.limiter.Release(k.key)
+	}
+}
+
+func (h *Handlers) userKeys(user models.User) []attemptKey {
+	return []attemptKey{{h.authLimiter, "user:" + user.ID.String()}}
 }
 
 func (h *Handlers) loginKeys(r *http.Request, email string) []attemptKey {
@@ -175,9 +177,10 @@ func (h *Handlers) clientIP(r *http.Request) (string, bool) {
 		host = r.RemoteAddr
 	}
 
-	if forwarded := strings.Join(r.Header.Values("X-Forwarded-For"), ","); h.trustProxy && forwarded != "" {
-		parts := strings.Split(forwarded, ",")
-		host = strings.TrimSpace(parts[len(parts)-1])
+	if h.trustProxy {
+		if forwarded := strings.Join(r.Header.Values("X-Forwarded-For"), ","); forwarded != "" {
+			host = strings.TrimSpace(forwarded[strings.LastIndexByte(forwarded, ',')+1:])
+		}
 	}
 
 	addr, err := netip.ParseAddr(host)
@@ -210,13 +213,13 @@ func (h *Handlers) deleteUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	done, ok := h.takeAttempts(w, []attemptKey{{h.authLimiter, "user:" + user.ID.String()}})
+	done, ok := takeAttempts(w, h.userKeys(user))
 	if !ok {
 		return
 	}
 
 	err := h.usecases.Delete(r.Context(), user, request.Password)
-	done(errors.Is(err, usecases.ErrInvalidCredentials))
+	done(err)
 	if err != nil {
 		writeError(w, err, "failed to delete user")
 		return
@@ -241,16 +244,16 @@ func (h *Handlers) updateUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	done := func(bool) {}
-	if request.Email != nil || request.Password != nil {
-		done, ok = h.takeAttempts(w, []attemptKey{{h.authLimiter, "user:" + user.ID.String()}})
+	done := func(error) {}
+	if request.ChangesCredentials() {
+		done, ok = takeAttempts(w, h.userKeys(user))
 		if !ok {
 			return
 		}
 	}
 
 	err := h.usecases.Update(r.Context(), user, request)
-	done(errors.Is(err, usecases.ErrInvalidCredentials))
+	done(err)
 	if err != nil {
 		writeError(w, err, "failed to update user")
 		return

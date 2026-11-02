@@ -42,3 +42,7 @@ type UpdateUser struct {
 
 	CurrentPassword *string `json:"current_password"`
 }
+
+func (u UpdateUser) ChangesCredentials() bool {
+	return u.Email != nil || u.Password != nil
+}

@@ -9,14 +9,13 @@ import (
 	"app-finance/internal/models"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5/pgconn"
 )
 
 var ErrNotFound = errors.New("user not found")
 
 var ErrEmailTaken = errors.New("email already taken")
-
-const uniqueViolationCode = "23505"
 
 type Users struct {
 	db *sql.DB
@@ -26,16 +25,6 @@ func New(db *sql.DB) *Users {
 	return &Users{
 		db: db,
 	}
-}
-
-func (u *Users) EmailExists(ctx context.Context, email string) (bool, error) {
-	var exists bool
-	err := u.db.QueryRowContext(ctx, "SELECT EXISTS (SELECT 1 FROM users WHERE email = $1)", email).Scan(&exists)
-	if err != nil {
-		return false, fmt.Errorf("checking if email exists: %w", err)
-	}
-
-	return exists, nil
 }
 
 func (u *Users) Add(ctx context.Context, newUser models.User) error {
@@ -56,7 +45,7 @@ func (u *Users) Add(ctx context.Context, newUser models.User) error {
 
 func isUniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
-	return errors.As(err, &pgErr) && pgErr.Code == uniqueViolationCode
+	return errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation
 }
 
 func (u *Users) GetByEmail(ctx context.Context, email string) (models.User, error) {

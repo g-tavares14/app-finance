@@ -37,11 +37,12 @@ func (l *Limiter) Take(key string) (time.Duration, bool) {
 
 	now := l.now()
 	e, ok := l.entries[key]
-	if ok && now.Before(e.windowEnd) && e.used >= l.max {
+	active := ok && now.Before(e.windowEnd)
+	if active && e.used >= l.max {
 		return e.windowEnd.Sub(now), false
 	}
 
-	if !ok || !now.Before(e.windowEnd) {
+	if !active {
 		l.makeRoom(now)
 		e = entry{windowEnd: now.Add(l.window)}
 	}

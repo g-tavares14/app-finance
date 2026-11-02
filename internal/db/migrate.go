@@ -24,10 +24,9 @@ type migrateResult struct {
 }
 
 func Migrate(ctx context.Context, dsn string) (bool, error) {
-	stop := make(chan struct{})
 	done := make(chan migrateResult, 1)
 	go func() {
-		applied, err := migrateUp(dsn, stop)
+		applied, err := migrateUp(ctx, dsn)
 		done <- migrateResult{applied: applied, err: err}
 	}()
 
@@ -35,8 +34,6 @@ func Migrate(ctx context.Context, dsn string) (bool, error) {
 	case result := <-done:
 		return result.applied, result.err
 	case <-ctx.Done():
-		close(stop)
-
 		select {
 		case <-done:
 			return false, fmt.Errorf("migrations interrupted: %w", ctx.Err())
@@ -46,7 +43,7 @@ func Migrate(ctx context.Context, dsn string) (bool, error) {
 	}
 }
 
-func migrateUp(dsn string, stop <-chan struct{}) (bool, error) {
+func migrateUp(ctx context.Context, dsn string) (bool, error) {
 	conn, err := sql.Open("pgx", dsn)
 	if err != nil {
 		return false, fmt.Errorf("opening migration connection: %w", err)
@@ -74,7 +71,7 @@ func migrateUp(dsn string, stop <-chan struct{}) (bool, error) {
 	defer close(finished)
 	go func() {
 		select {
-		case <-stop:
+		case <-ctx.Done():
 			m.GracefulStop <- true
 		case <-finished:
 		}
