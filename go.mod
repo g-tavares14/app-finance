@@ -1,4 +1,4 @@
-module app-finance
+module github.com/g-tavares14/go-auth-api
 
 go 1.27.2
 

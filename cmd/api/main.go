@@ -8,10 +8,10 @@ import (
 	"os/signal"
 	"syscall"
 
-	"app-finance/internal/db"
-	"app-finance/internal/handlers"
-	"app-finance/internal/repositories"
-	"app-finance/internal/usecases"
+	"github.com/g-tavares14/go-auth-api/internal/db"
+	"github.com/g-tavares14/go-auth-api/internal/handlers"
+	"github.com/g-tavares14/go-auth-api/internal/repositories"
+	"github.com/g-tavares14/go-auth-api/internal/usecases"
 )
 
 const minSecretBytes = 32

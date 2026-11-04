@@ -1,12 +1,12 @@
 package handlers
 
 import (
-	"app-finance/internal/middleware"
-	"app-finance/internal/models"
-	"app-finance/internal/ratelimit"
-	"app-finance/internal/usecases"
 	"encoding/json"
 	"errors"
+	"github.com/g-tavares14/go-auth-api/internal/middleware"
+	"github.com/g-tavares14/go-auth-api/internal/models"
+	"github.com/g-tavares14/go-auth-api/internal/ratelimit"
+	"github.com/g-tavares14/go-auth-api/internal/usecases"
 	"log/slog"
 	"math"
 	"net"

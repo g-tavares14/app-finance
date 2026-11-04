@@ -4,8 +4,8 @@ import (
 	"context"
 	"database/sql"
 
-	"app-finance/internal/models"
-	"app-finance/internal/repositories/users"
+	"github.com/g-tavares14/go-auth-api/internal/models"
+	"github.com/g-tavares14/go-auth-api/internal/repositories/users"
 
 	"github.com/google/uuid"
 )

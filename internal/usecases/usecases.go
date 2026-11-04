@@ -1,15 +1,15 @@
 package usecases
 
 import (
-	"app-finance/internal/models"
-	"app-finance/internal/repositories"
-	userrepo "app-finance/internal/repositories/users"
 	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"github.com/g-tavares14/go-auth-api/internal/models"
+	"github.com/g-tavares14/go-auth-api/internal/repositories"
+	userrepo "github.com/g-tavares14/go-auth-api/internal/repositories/users"
 	"net/mail"
 	"strings"
 	"time"

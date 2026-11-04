@@ -1,6 +1,6 @@
 # CLAUDE.md
 
-Convenções do projeto `app-finance` (API em Go com Postgres).
+Convenções do projeto `go-auth-api` (API em Go com Postgres).
 
 ## Idioma
 

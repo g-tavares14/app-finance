@@ -1,7 +1,7 @@
 services:
   db:
     image: postgres:17
-    container_name: finance-db
+    container_name: auth-db
     environment:
       POSTGRES_USER: finance
       POSTGRES_PASSWORD: finance
@@ -18,7 +18,7 @@ services:
 
   api:
     build: .
-    container_name: finance-api
+    container_name: auth-api
     environment:
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET (at least 32 bytes) in the environment or in a .env file}
       DATABASE_URL: postgres://finance:finance@db:5432/finance?sslmode=disable

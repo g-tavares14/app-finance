@@ -7,7 +7,7 @@ import (
 	"net/http"
 	"strings"
 
-	"app-finance/internal/models"
+	"github.com/g-tavares14/go-auth-api/internal/models"
 )
 
 type contextKey string

@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	"app-finance/internal/models"
+	"github.com/g-tavares14/go-auth-api/internal/models"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgerrcode"

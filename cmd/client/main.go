@@ -1,10 +1,10 @@
 package main
 
 import (
-	"app-finance/internal/models"
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"github.com/g-tavares14/go-auth-api/internal/models"
 	"io"
 	"log"
 	"net/http"
